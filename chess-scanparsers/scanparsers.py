@@ -55,10 +55,7 @@ class ScanParser:
     :param scan_number: the number of a scan in the SPEC file provided
         with `spec_file_name`
     :type scan_number: int
-    """
-    property_names = ['scan_path']
-    for name in property_names:
-        
+    """        
     
     def __init__(self,
                  spec_file_name:str,
