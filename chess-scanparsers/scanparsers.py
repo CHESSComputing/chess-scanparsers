@@ -1,6 +1,4 @@
-#!/usr/bin/env python3
-
-# -*- coding: utf-8 -*-
+#!/usr/bin/env python3AA
 
 """Parsing data from certain CHESS SPEC scans is supported by a family
 of classes derived from the base class, `ScanParser` (defined
@@ -34,21 +32,18 @@ Basic usage examples:
     ```
 """
 
-# System modules
-from csv import reader
-from fnmatch import filter as fnmatch_filter
 from functools import cache, cached_property
-from json import load
 import os
-import re
 
-# Third party modules
 import numpy as np
-from pyspec.file.spec import FileSpec
-from pyspec.file.tiff import TiffFile
 
 @cache
 def filespec(spec_file_name):
+    """A cached function for returning a `pyspec.file.spec.FileSpec`
+    object for an entire spec data file. Good to cache this for
+    efficiency when parsing many scans from the same SPEC file as part
+    of an analysis worflow."""
+    from pyspec.file.spec import FileSpec
     return FileSpec(spec_file_name)
 
 class ScanParser:
@@ -252,7 +247,11 @@ class ScanParser:
         :type scan_step_index: int
         :rtype: numpy.ndarray
         """
-        raise NotImplementedError
+        import fabio
+        return fabio.open(
+            self.get_detector_data_file(
+                detector_prefix, scan_step_index)).data
+
 
     def get_spec_positioner_value(self, positioner_name):
         """Return the value of a spec positioner recorded before this
@@ -319,6 +318,9 @@ class SMBScanParser(ScanParser):
 
         :rtype: dict[str,object]
         """
+        from csv import reader
+        from fnmatch import filter as fnmatch_filter
+        from json import load
         # JSON file holds titles for columns in the par file
         json_files = fnmatch_filter(
             os.listdir(self.scan_path),
@@ -384,6 +386,7 @@ class SMBScanParser(ScanParser):
         :type counter_name: str
         :rtype: str
         """
+        import re
         counter_gain = None
         for comment in self.spec_scan.comments:
             match = re.search(
@@ -601,7 +604,7 @@ def list_fmb_saxswaxs_detector_files(detector_data_path, detector_prefix):
         if detector_prefix in f
         and not f.endswith('.log')])
 
-class FMBSAXSWAXSScanParser(FMBScanParser, LinearScanParser):
+class FMBSAXSWAXSScanParser(LinearScanParser, FMBScanParser):
     """Concrete implementation of a class representing a scan taken
     with the typical SAXS/WAXS setup at FMB.
     """
@@ -631,16 +634,8 @@ class FMBSAXSWAXSScanParser(FMBScanParser, LinearScanParser):
                 'Could not find a matching detector data file for detector '
                 + f'{detector_prefix} at scan step index {scan_step_index}')
 
-    def get_detector_data(self, detector_prefix, scan_step_index:int):
-        import fabio
-        image_file = self.get_detector_data_file(detector_prefix,
-                                                 scan_step_index)
-        with fabio.open(image_file) as det_file:
-            image_data = det_file.data
-        return image_data
 
-
-class FMBXRFScanParser(FMBScanParser, LinearScanParser):
+class FMBXRFScanParser(LinearScanParser, FMBScanParser):
     """Concrete implementation of a class representing a scan taken
     with the typical XRF setup at FMB.
     """
@@ -662,15 +657,10 @@ class FMBXRFScanParser(FMBScanParser, LinearScanParser):
                            f'({scan_step_index})')
 
     def get_detector_data(self, detector_prefix, scan_step_index:int):
-        from h5py import File
-
-        detector_file = self.get_detector_data_file(
-            detector_prefix, scan_step_index)
         scan_step = self.get_scan_step(scan_step_index)
-        with File(detector_file) as h5_file:
-            detector_data = \
-                h5_file['/entry/instrument/detector/data'][scan_step[0]]
-        return detector_data
+        all_data = super().get_detector_data(detector_prefix, scan_step_index)
+        return all_data[scan_step[0]]
+
 
 
 class SMBLinearScanParser(LinearScanParser, SMBScanParser):
@@ -681,6 +671,7 @@ class SMBLinearScanParser(LinearScanParser, SMBScanParser):
         return os.path.join(self.scan_path, str(self.scan_number))
 
     def get_detector_data_file(self, detector_prefix, scan_step_index:int):
+        from fnmatch import filter as fnmatch_filter
         scan_step = self.get_scan_step(scan_step_index)
         if len(scan_step) == 1:
             scan_step = (0, *scan_step)
@@ -697,16 +688,6 @@ class SMBLinearScanParser(LinearScanParser, SMBScanParser):
                            f'file for detector {detector_prefix} scan step '
                            f'({scan_step_index})')
 
-    def get_detector_data(self, detector_prefix, scan_step_index:int):
-        # Third party modules
-        from h5py import File
-
-        image_file = self.get_detector_data_file(
-            detector_prefix, scan_step_index)
-        with File(image_file) as h5_file:
-            image_data = h5_file['/entry/data/data'][0]
-        return image_data
-
 
 class RotationScanParser(ScanParser):
     """Partial implementation of a class representing a rotation
@@ -718,17 +699,17 @@ class RotationScanParser(ScanParser):
         self._starting_image_index = None
         self._starting_image_offset = None
 
-    @property
+    @cached_property
     def starting_image_index(self):
-        if self._starting_image_index is None:
-            self._starting_image_index = self.get_starting_image_index()
-        return self._starting_image_index
+        """The index of the first frame of detector data collected by
+        this scan."""
+        return self.get_starting_image_index()
 
-    @property
+    @cached_property
     def starting_image_offset(self):
-        if self._starting_image_offset is None:
-            self._starting_image_offset = self.get_starting_image_offset()
-        return self._starting_image_offset
+        """The offset of the index of the first "good" frame of
+        detector data collected by this scan."""
+        return self.get_starting_image_offset()
 
     def get_starting_image_index(self):
         """Return the first frame of the detector data collected by
@@ -807,7 +788,6 @@ class FMBRotationScanParser(RotationScanParser, FMBScanParser):
 
     def get_all_detector_data_in_file(
             self, detector_prefix, scan_step_index=None):
-        # Third party modules
         from h5py import File
 
         detector_file = self.get_detector_data_file(detector_prefix)
@@ -835,6 +815,7 @@ class FMBRotationScanParser(RotationScanParser, FMBScanParser):
                 detector_prefix, scan_step_index)
         except:
             # Detector files in tiff format
+            from pyspec.file.tiff import TiffFile
             if scan_step_index is None:
                 detector_data = []
                 for index in range(self.spec_scan_npts):
@@ -886,11 +867,9 @@ class SMBRotationScanParser(RotationScanParser, SMBScanParser):
         if par_file is not None:
             self._par_file = par_file
 
-    @property
+    @cached_property
     def scan_type(self):
-        if self._scan_type is None:
-            self._scan_type = self.get_scan_type()
-        return self._scan_type
+        return self.get_scan_type()
 
     def get_spec_scan_data(self):
         spec_scan_data = super().get_spec_scan_data()
@@ -913,6 +892,7 @@ class SMBRotationScanParser(RotationScanParser, SMBScanParser):
 
     def get_starting_image_index(self):
         try:
+            import re
             junkstart = int(self.pars['junkstart'])
             #RV temp fix for error in par files at Kate's beamline
             #Remove this and self._katefix when no longer needed
@@ -958,6 +938,7 @@ class SMBRotationScanParser(RotationScanParser, SMBScanParser):
                            f'({scan_step_index})')
 
     def get_detector_data(self, detector_prefix, scan_step_index=None):
+        from pyspec.file.tiff import TiffFile
         if scan_step_index is None:
             detector_data = []
             for index in range(self.spec_scan_npts):
