@@ -55,10 +55,7 @@ class ScanParser:
     :param scan_number: the number of a scan in the SPEC file provided
         with `spec_file_name`
     :type scan_number: int
-    """
-    property_names = ['scan_path']
-    for name in property_names:
-        
+    """        
     
     def __init__(self,
                  spec_file_name:str,
@@ -461,7 +458,7 @@ class LinearScanParser(ScanParser):
                 dwell = float(self.spec_args[4])
             except:
                 # Accommodate pre-summer-2022 format                            
-		m2_start_i = 5
+                m2_start_i = 5
                 m2_end_i = 6
                 m2_nint_i = 7
             else:
@@ -472,14 +469,14 @@ class LinearScanParser(ScanParser):
             m2_end = float(self.spec_args[m2_end_i])
             m2_npt = int(self.spec_args[m2_nint_i]) + 1
             fast_mot_vals = np.linspace(m1_start, m1_end, m1_npt)
-	    slow_mot_vals = np.linspace(m2_start, m2_end, m2_npt)
+            slow_mot_vals = np.linspace(m2_start, m2_end, m2_npt)
             return (fast_mot_vals, slow_mot_vals)
         if self.spec_macro in ('flyscan', 'ascan'):
             mot_vals = np.linspace(float(self.spec_args[1]),
                                    float(self.spec_args[2]),
                                    int(self.spec_args[3])+1)
             return (mot_vals,)
-	if self.spec_macro in ('tseries', 'loopscan'):
+        if self.spec_macro in ('tseries', 'loopscan'):
             return (self.spec_scan.data[:,0],)
         raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
                            f'for scans of type {self.spec_macro}')
