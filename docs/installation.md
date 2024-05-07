@@ -1,14 +1,12 @@
 # Installation
 
-
-<!---
 ## Using `pip`
 `chess-scanparser` is available over PyPI. Run
 ```bash
 pip install chess-scanparser
 ```
 to install.
-
+<!---
 ## Using `conda`
 CHAP is available over conda-forge. Run
 ```bash

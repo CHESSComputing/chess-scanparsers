@@ -1,4 +1,4 @@
-# ChessAnalysisPipeline (CHAP)
+# chess-scanparsers
 
 ```{toctree}
 :maxdepth: 2
