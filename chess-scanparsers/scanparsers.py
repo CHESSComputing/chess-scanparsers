@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/Abin/env python3
 
 # -*- coding: utf-8 -*-
 
@@ -483,7 +483,24 @@ class LinearScanParser(ScanParser):
 
         :rtype: tuple
         """
-        raise NotImplementedError
+        if self.spec_macro in ('flymesh', 'mesh', 'flydmesh', 'dmesh'):
+            m1_mne = self.spec_args[0]
+            try:
+                # Try post-summer-2022 format
+                dwell = float(self.spec_args[4])
+            except:
+                # Accommodate pre-summer-2022 format
+                m2_mne_i = 4
+            else:
+                m2_mne_i = 5
+            m2_mne = self.spec_args[m2_mne_i]
+            return (m1_mne, m2_mne)
+        if self.spec_macro in ('flyscan', 'ascan'):
+            return (self.spec_args[0],)
+        if self.spec_macro in ('tseries', 'loopscan'):
+            return ('Time',)
+        raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
+                           f'for scans of type {self.spec_macro}')
 
     def get_spec_scan_motor_vals(self):
         """Return the values visited by each of the scanned motors. If
@@ -494,7 +511,37 @@ class LinearScanParser(ScanParser):
 
         :rtype: tuple
         """
-        raise NotImplementedError
+        if self.spec_macro in ('flymesh', 'mesh'):
+            m1_start = float(self.spec_args[1])
+            m1_end = float(self.spec_args[2])
+            m1_npt = int(self.spec_args[3]) + 1
+            try:
+                # Try post-summer-2022 format
+                dwell = float(self.spec_args[4])
+            except:
+                # Accommodate pre-summer-2022 format
+                m2_start_i = 5
+                m2_end_i = 6
+                m2_nint_i = 7
+            else:
+                m2_start_i = 6
+                m2_end_i = 7
+                m2_nint_i = 8
+            m2_start = float(self.spec_args[m2_start_i])
+            m2_end = float(self.spec_args[m2_end_i])
+            m2_npt = int(self.spec_args[m2_nint_i]) + 1
+            fast_mot_vals = np.linspace(m1_start, m1_end, m1_npt)
+            slow_mot_vals = np.linspace(m2_start, m2_end, m2_npt)
+            return (fast_mot_vals, slow_mot_vals)
+        if self.spec_macro in ('flyscan', 'ascan'):
+            mot_vals = np.linspace(float(self.spec_args[1]),
+                                   float(self.spec_args[2]),
+                                   int(self.spec_args[3])+1)
+            return (mot_vals,)
+        if self.spec_macro in ('tseries', 'loopscan'):
+            return (self.spec_scan.data[:,0],)
+        raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
+                           f'for scans of type {self.spec_macro}')
 
     def get_spec_scan_shape(self):
         """Return the number of points visited by each of the scanned
@@ -506,7 +553,25 @@ class LinearScanParser(ScanParser):
 
         :rtype: tuple
         """
-        raise NotImplementedError
+        if self.spec_macro in ('flymesh', 'mesh'):
+            fast_mot_npts = int(self.spec_args[3]) + 1
+            try:
+                # Try post-summer-2022 format
+                dwell = float(self.spec_args[4])
+            except:
+                # Accommodate pre-summer-2022 format
+                m2_nint_i = 7
+            else:
+                m2_nint_i = 8
+            slow_mot_npts = int(self.spec_args[m2_nint_i]) + 1
+            return (fast_mot_npts, slow_mot_npts)
+        if self.spec_macro in ('flyscan', 'ascan'):
+            mot_npts = int(self.spec_args[3])+1
+            return (mot_npts,)
+        if self.spec_macro in ('tseries', 'loopscan'):
+            return (len(np.array(self.spec_scan.data[:,0])),)
+        raise RuntimeError(f'{self.scan_title}: cannot determine scan shape '
+                           f'for scans of type {self.spec_macro}')
 
     def get_spec_scan_dwell(self):
         """Return the dwell time for each point in the scan as it
@@ -514,7 +579,22 @@ class LinearScanParser(ScanParser):
 
         :rtype: float
         """
-        raise NotImplementedError
+        if self.macro in ('flymesh', 'mesh', 'flydmesh', 'dmesh'):
+            try:
+                # Try post-summer-2022 format
+                dwell = float(self.spec_args[4])
+            except:
+                # Accommodate pre-summer-2022 format
+                dwell = float(self.spec_args[8])
+            return dwell
+        if self.spec_macro in ('flyscan', 'ascan'):
+            return float(self.spec_args[4])
+        if self.spec_macro in ('tseries', 'loopscan'):
+            return float(self.spec_args[1])
+        if self.spec_macro in ('wbslew_scan'):
+            return float(self.spec_args[3])
+        raise RuntimeError(f'{self.scan_title}: cannot determine dwell for '
+                           f'scans of type {self.spec_macro}')
 
     def get_spec_scan_npts(self):
         """Return the number of points collected in this SPEC scan.
@@ -568,106 +648,6 @@ class LinearScanParser(ScanParser):
         return scan_step_index
 
 
-class FMBLinearScanParser(LinearScanParser, FMBScanParser):
-    """Partial implementation of a class representing a typical line
-    or mesh scan in SPEC collected at FMB.
-    """
-
-    def get_spec_scan_motor_mnes(self):
-        if self.spec_macro in ('flymesh', 'mesh', 'flydmesh', 'dmesh'):
-            m1_mne = self.spec_args[0]
-            try:
-                # Try post-summer-2022 format
-                dwell = float(self.spec_args[4])
-            except:
-                # Accommodate pre-summer-2022 format
-                m2_mne_i = 4
-            else:
-                m2_mne_i = 5
-            m2_mne = self.spec_args[m2_mne_i]
-            return (m1_mne, m2_mne)
-        if self.spec_macro in ('flyscan', 'ascan'):
-            return (self.spec_args[0],)
-        if self.spec_macro in ('tseries', 'loopscan'):
-            return ('Time',)
-        raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
-                           f'for scans of type {self.spec_macro}')
-
-    def get_spec_scan_motor_vals(self):
-        if self.spec_macro in ('flymesh', 'mesh', 'flydmesh', 'dmesh'):
-            m1_start = float(self.spec_args[1])
-            m1_end = float(self.spec_args[2])
-            m1_npt = int(self.spec_args[3]) + 1
-            try:
-                # Try post-summer-2022 format
-                dwell = float(self.spec_args[4])
-            except:
-                # Accommodate pre-summer-2022 format
-                m2_start_i = 5
-                m2_end_i = 6
-                m2_nint_i = 7
-            else:
-                m2_start_i = 6
-                m2_end_i = 7
-                m2_nint_i = 8
-            m2_start = float(self.spec_args[m2_start_i])
-            m2_end = float(self.spec_args[m2_end_i])
-            m2_npt = int(self.spec_args[m2_nint_i]) + 1
-            fast_mot_vals = np.linspace(m1_start, m1_end, m1_npt)
-            slow_mot_vals = np.linspace(m2_start, m2_end, m2_npt)
-            return (fast_mot_vals, slow_mot_vals)
-        if self.spec_macro in ('flyscan', 'ascan'):
-            mot_vals = np.linspace(float(self.spec_args[1]),
-                                   float(self.spec_args[2]),
-                                   int(self.spec_args[3])+1)
-            return (mot_vals,)
-        if self.spec_macro in ('tseries', 'loopscan'):
-            return (self.spec_scan.data[:,0],)
-        raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
-                           f'for scans of type {self.spec_macro}')
-
-    def get_spec_scan_shape(self):
-        if self.spec_macro in ('flymesh', 'mesh', 'flydmesh', 'dmesh'):
-            fast_mot_npts = int(self.spec_args[3]) + 1
-            try:
-                # Try post-summer-2022 format
-                dwell = float(self.spec_args[4])
-            except:
-                # Accommodate pre-summer-2022 format
-                m2_nint_i = 7
-            else:
-                m2_nint_i = 8
-            slow_mot_npts = int(self.spec_args[m2_nint_i]) + 1
-            return (fast_mot_npts, slow_mot_npts)
-        if self.spec_macro in ('flyscan', 'ascan'):
-            mot_npts = int(self.spec_args[3])+1
-            return (mot_npts,)
-        if self.spec_macro in ('tseries', 'loopscan'):
-            return (len(np.array(self.spec_scan.data[:,0])),)
-        raise RuntimeError(f'{self.scan_title}: cannot determine scan shape '
-                           f'for scans of type {self.spec_macro}')
-
-    def get_spec_scan_dwell(self):
-        if self.macro in ('flymesh', 'mesh', 'flydmesh', 'dmesh'):
-            try:
-                # Try post-summer-2022 format
-                dwell = float(self.spec_args[4])
-            except:
-                # Accommodate pre-summer-2022 format
-                dwell = float(self.spec_args[8])
-            return dwell
-        if self.spec_macro in ('flyscan', 'ascan'):
-            return float(self.spec_args[4])
-        if self.spec_macro in ('tseries', 'loopscan'):
-            return float(self.spec_args[1])
-        raise RuntimeError(f'{self.scan_title}: cannot determine dwell for '
-                           f'scans of type {self.spec_macro}')
-
-    def get_detector_data_path(self):
-        return os.path.join(self.scan_path, self.scan_title)
-
-
-
 @cache
 def list_fmb_saxswaxs_detector_files(detector_data_path, detector_prefix):
     """Return a sorted list of all data files for the given detector
@@ -688,13 +668,16 @@ def list_fmb_saxswaxs_detector_files(detector_data_path, detector_prefix):
         if detector_prefix in f
         and not f.endswith('.log')])
 
-class FMBSAXSWAXSScanParser(FMBLinearScanParser):
+class FMBSAXSWAXSScanParser(LinearScanParser, FMBScanParser):
     """Concrete implementation of a class representing a scan taken
     with the typical SAXS/WAXS setup at FMB.
     """
 
     def get_scan_title(self):
         return f'{self.scan_name}_{self.scan_number:03d}'
+
+    def get_detector_data_path(self):
+        return os.path.join(self.scan_path, self.scan_title)
 
     def get_detector_data_file(self, detector_prefix, scan_step_index:int):
         detector_files = list_fmb_saxswaxs_detector_files(
@@ -724,13 +707,16 @@ class FMBSAXSWAXSScanParser(FMBLinearScanParser):
         return image_data
 
 
-class FMBXRFScanParser(FMBLinearScanParser):
+class FMBXRFScanParser(LinearScanParser, FMBScanParser):
     """Concrete implementation of a class representing a scan taken
     with the typical XRF setup at FMB.
     """
 
     def get_scan_title(self):
         return f'{self.scan_name}_scan{self.scan_number}'
+
+    def get_detector_data_path(self):
+        return os.path.join(self.scan_path, self.scan_title)
 
     def get_detector_data_file(self, detector_prefix, scan_step_index:int):
         scan_step = self.get_scan_step(scan_step_index)
@@ -759,99 +745,6 @@ class SMBLinearScanParser(LinearScanParser, SMBScanParser):
     """Concrete implementation of a class representing a scan taken
     with the typical powder diffraction setup at SMB.
     """
-
-    def get_spec_scan_dwell(self):
-        if self.spec_macro in ('flymesh', 'mesh'):
-            try:
-                # Try post-summer-2022 format
-                dwell = float(self.spec_args[4])
-            except:
-                # Accommodate pre-summer-2022 format
-                dwell = float(self.spec_args[8])
-            return dwell
-        if self.spec_macro in ('flyscan', 'ascan'):
-            return float(self.spec_args[4])
-        if self.spec_macro == 'tseries':
-            return float(self.spec_args[1])
-        if self.spec_macro == 'wbslew_scan':
-            return float(self.spec_args[3])
-        raise RuntimeError(f'{self.scan_title}: cannot determine dwell time '
-                           f'for scans of type {self.spec_macro}')
-
-    def get_spec_scan_motor_mnes(self):
-        if self.spec_macro in ('flymesh', 'mesh'):
-            m1_mne = self.spec_args[0]
-            try:
-                # Try post-summer-2022 format
-                dwell = float(self.spec_args[4])
-            except:
-                # Accommodate pre-summer-2022 format
-                m2_mne_i = 4
-            else:
-                m2_mne_i = 5
-            m2_mne = self.spec_args[m2_mne_i]
-            return (m1_mne, m2_mne)
-        if self.spec_macro in ('flyscan', 'ascan'):
-            return (self.spec_args[0],)
-        if self.spec_macro in ('tseries', 'loopscan'):
-            return ('Time',)
-        raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
-                           f'for scans of type {self.spec_macro}')
-
-    def get_spec_scan_motor_vals(self):
-        if self.spec_macro in ('flymesh', 'mesh'):
-            m1_start = float(self.spec_args[1])
-            m1_end = float(self.spec_args[2])
-            m1_npt = int(self.spec_args[3]) + 1
-            try:
-                # Try post-summer-2022 format
-                dwell = float(self.spec_args[4])
-            except:
-                # Accommodate pre-summer-2022 format
-                m2_start_i = 5
-                m2_end_i = 6
-                m2_nint_i = 7
-            else:
-                m2_start_i = 6
-                m2_end_i = 7
-                m2_nint_i = 8
-            m2_start = float(self.spec_args[m2_start_i])
-            m2_end = float(self.spec_args[m2_end_i])
-            m2_npt = int(self.spec_args[m2_nint_i]) + 1
-            fast_mot_vals = np.linspace(m1_start, m1_end, m1_npt)
-            slow_mot_vals = np.linspace(m2_start, m2_end, m2_npt)
-            return (fast_mot_vals, slow_mot_vals)
-        if self.spec_macro in ('flyscan', 'ascan'):
-            mot_vals = np.linspace(float(self.spec_args[1]),
-                                   float(self.spec_args[2]),
-                                   int(self.spec_args[3])+1)
-            return (mot_vals,)
-        if self.spec_macro in ('tseries', 'loopscan'):
-            return (self.spec_scan.data[:,0],)
-        raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
-                           f'for scans of type {self.spec_macro}')
-
-    def get_spec_scan_shape(self):
-        if self.spec_macro in ('flymesh', 'mesh'):
-            fast_mot_npts = int(self.spec_args[3]) + 1
-            try:
-                # Try post-summer-2022 format
-                dwell = float(self.spec_args[4])
-            except:
-                # Accommodate pre-summer-2022 format
-                m2_nint_i = 7
-            else:
-                m2_nint_i = 8
-            slow_mot_npts = int(self.spec_args[m2_nint_i]) + 1
-            return (fast_mot_npts, slow_mot_npts)
-        if self.spec_macro in ('flyscan', 'ascan'):
-            mot_npts = int(self.spec_args[3])+1
-            return (mot_npts,)
-        if self.spec_macro in ('tseries', 'loopscan'):
-            return (len(np.array(self.spec_scan.data[:,0])),)
-        raise RuntimeError(f'{self.scan_title}: cannot determine scan shape '
-                           f'for scans of type {self.spec_macro}')
-
     def get_detector_data_path(self):
         return os.path.join(self.scan_path, str(self.scan_number))
 
