@@ -1,4 +1,6 @@
-#!/usr/bin/env python3AA
+#!/usr/bin/env python3
+
+# -*- coding: utf-8 -*-
 
 """Parsing data from certain CHESS SPEC scans is supported by a family
 of classes derived from the base class, `ScanParser` (defined
@@ -32,18 +34,21 @@ Basic usage examples:
     ```
 """
 
-from functools import cache, cached_property
+# System modules
+from csv import reader
+from fnmatch import filter as fnmatch_filter
+from functools import cache
+from json import load
 import os
+import re
 
+# Third party modules
 import numpy as np
+from pyspec.file.spec import FileSpec
+from pyspec.file.tiff import TiffFile
 
 @cache
 def filespec(spec_file_name):
-    """A cached function for returning a `pyspec.file.spec.FileSpec`
-    object for an entire spec data file. Good to cache this for
-    efficiency when parsing many scans from the same SPEC file as part
-    of an analysis worflow."""
-    from pyspec.file.spec import FileSpec
     return FileSpec(spec_file_name)
 
 class ScanParser:
@@ -55,8 +60,8 @@ class ScanParser:
     :param scan_number: the number of a scan in the SPEC file provided
         with `spec_file_name`
     :type scan_number: int
-    """        
-    
+    """
+
     def __init__(self,
                  spec_file_name:str,
                  scan_number:int):
@@ -89,103 +94,86 @@ class ScanParser:
                 f'({self.spec_file_name}, {self.scan_number}) '
                 f'-- {self.spec_command}')
 
-    @cached_property
+    @property
     def spec_file(self):
         # NB This FileSpec instance is not stored as a private
         # attribute because it cannot be pickled (and therefore could
         # cause problems for parallel code that uses ScanParsers).
         return filespec(self.spec_file_name)
 
-    @cached_property
+    @property
     def scan_path(self):
-        """The name of the directory containining the SPEC file for
-        this scan."""
-        return os.path.dirname(self.spec_file_name)
+        if self._scan_path is None:
+            self._scan_path = self.get_scan_path()
+        return self._scan_path
 
-    @cached_property
+    @property
     def scan_name(self):
-        """The name of this SPEC scan (not unique to scans within a
-        single spec file)."""
-        return self.get_scan_name()
+        if self._scan_name is None:
+            self._scan_name = self.get_scan_name()
+        return self._scan_name
 
-    @cached_property
+    @property
     def scan_title(self):
-        """The title of this SPEC scan (unique to each scan within a
-        spec file)."""
-        return self.get_scan_title()
+        if self._scan_title is None:
+            self._scan_title = self.get_scan_title()
+        return self._scan_title
 
-    @cached_property
+    @property
     def spec_scan(self):
-        """The instance of `pyspec.file.spec.Scan` corresponding to
-        this scan."""
-        return self.spec_file.getScanByNumber(self.scan_number)
+        if self._spec_scan is None:
+            self._spec_scan = self.get_spec_scan()
+        return self._spec_scan
 
-    @cached_property
+    @property
     def spec_command(self):
-        """The SPEC command recorded for this scan (as a single
-        string)."""
-        return self.spec_scan.command
+        if self._spec_command is None:
+            self._spec_command = self.get_spec_command()
+        return self._spec_command
 
-    @cached_property
+    @property
     def spec_macro(self):
-        """The SPEC macro of this scan's command (a string)."""
-        return self.spec_command.split()[0]
+        if self._spec_macro is None:
+            self._spec_macro = self.get_spec_macro()
+        return self._spec_macro
 
-    @cached_property
+    @property
     def spec_args(self):
-        """The arguments provided to the SPEC macro to complete the
-        command (a list of strings)."""
-        args = self.spec_command.split()[1:]
-        for i, a in enumerate(args):
-            try:
-                typed_arg = int(a)
-            except:
-                try:
-                    typed_arg = float(a)
-                except:
-                    typed_arg = a
-            args[i] = typed_arg
-        return args
+        if self._spec_args is None:
+            self._spec_args = self.get_spec_args()
+        return self._spec_args
 
-    @cached_property
+    @property
     def spec_scan_npts(self):
-        """The number of points / frames of datd in this scan (an
-        integer)."""
-        return self.get_spec_scan_npts()
+        if self._spec_scan_npts is None:
+            self._spec_scan_npts = self.get_spec_scan_npts()
+        return self._spec_scan_npts
 
-    @cached_property
+    @property
     def spec_scan_data(self):
-        """The columns of SPEC data available for this scan (a
-        dictionary in which keys are the counter column labels, and
-        values are a numpy arrays of the corresponding counter's
-        values recorded in the spec data file)."""
-        return dict(zip(self.spec_scan.labels, self.spec_scan.data.T))
+        if self._spec_scan_data is None:
+            self._spec_scan_data = self.get_spec_scan_data()
+        return self._spec_scan_data
 
-    @cached_property
+    @property
     def spec_positioner_values(self):
-        """The values of static SPEC positioner motors recorded before
-        this scan ran (a dictionary in which keys are motor mnemonics,
-        and values are a float of th corresponding motor's position as
-        recorded in the spec data file)."""
-        positioner_values = dict(self.spec_scan.motor_positions)
-        names = list(positioner_values.keys())
-        mnemonics = self.spec_scan.motors
-        if mnemonics is not None:
-            for name,mnemonic in zip(names,mnemonics):
-                if name != mnemonic:
-                    value = positioner_values[name]
-                    try:
-                        value = float(value)
-                    except:
-                        pass
-                    positioner_values[mnemonic] = value
-        return positioner_values
+        if self._spec_positioner_values is None:
+            self._spec_positioner_values = self.get_spec_positioner_values()
+        return self._spec_positioner_values
 
-    @cached_property
+    @property
     def detector_data_path(self):
-        """Path to the directory containing detector data files for
-        this scan (a string)."""
-        return self.get_detector_data_path()
+        if self._detector_data_path is None:
+            self._detector_data_path = self.get_detector_data_path()
+        return self._detector_data_path
+
+    def get_scan_path(self):
+        """Return the name of the directory containining the SPEC file
+        for this scan.
+
+        :rtype: str
+        """
+        return os.path.dirname(self.spec_file_name)
 
     def get_scan_name(self):
         """Return the name of this SPEC scan (not unique to scans
@@ -203,12 +191,65 @@ class ScanParser:
         """
         raise NotImplementedError
 
+    def get_spec_scan(self):
+        """Return the `pyspec.file.spec.Scan` object parsed from the
+        spec file and scan number provided to the constructor.
+
+        :rtype: pyspec.file.spec.Scan
+        """
+        return self.spec_file.getScanByNumber(self.scan_number)
+
+    def get_spec_command(self):
+        """Return the string command of this SPEC scan.
+
+        :rtype: str
+        """
+        return self.spec_scan.command
+
+    def get_spec_macro(self):
+        """Return the macro used in this scan's SPEC command.
+
+        :rtype: str
+        """
+        return self.spec_command.split()[0]
+
+    def get_spec_args(self):
+        """Return a list of the arguments provided to the macro for
+        this SPEC scan.
+
+        :rtype: list[str]
+        """
+        return self.spec_command.split()[1:]
+
     def get_spec_scan_npts(self):
         """Return the number of points collected in this SPEC scan
 
         :rtype: int
         """
         raise NotImplementedError
+
+    def get_spec_scan_data(self):
+        """Return a dictionary of all the counter data collected by
+        this SPEC scan.
+
+        :rtype: dict[str, numpy.ndarray]
+        """
+        return dict(zip(self.spec_scan.labels, self.spec_scan.data.T))
+
+    def get_spec_positioner_values(self):
+        """Return a dictionary of all the SPEC positioner values
+        recorded by SPEC just before the scan began.
+
+        :rtype: dict[str,str]
+        """
+        positioner_values = dict(self.spec_scan.motor_positions)
+        names = list(positioner_values.keys())
+        mnemonics = self.spec_scan.motors
+        if mnemonics is not None:
+            for name,mnemonic in zip(names,mnemonics):
+                if name != mnemonic:
+                    positioner_values[mnemonic] = positioner_values[name]
+        return positioner_values
 
     def get_detector_data_path(self):
         """Return the name of the directory containing detector data
@@ -244,11 +285,7 @@ class ScanParser:
         :type scan_step_index: int
         :rtype: numpy.ndarray
         """
-        import fabio
-        return fabio.open(
-            self.get_detector_data_file(
-                detector_prefix, scan_step_index)).data
-
+        raise NotImplementedError
 
     def get_spec_positioner_value(self, positioner_name):
         """Return the value of a spec positioner recorded before this
@@ -265,9 +302,14 @@ class ScanParser:
         """
         try:
             positioner_value = self.spec_positioner_values[positioner_name]
+            positioner_value = float(positioner_value)
         except KeyError:
             raise KeyError(f'{self.scan_title}: motor {positioner_name} '
                            'not found for this scan')
+        except ValueError:
+            raise ValueError(f'{self.scan_title}: could not convert value of'
+                             f' {positioner_name} to float: '
+                             f'{positioner_value}')
         return positioner_value
 
 
@@ -285,8 +327,7 @@ class FMBScanParser(ScanParser):
 
 class SMBScanParser(ScanParser):
     """Partial implementation of a class representing a SPEC scan
-    collected at SMB or FAST. Implements `get_scan_name` and
-    `get_scan_title`.
+    collected at SMB or FAST.
     """
 
     def __init__(self, spec_file_name, scan_number):
@@ -301,13 +342,11 @@ class SMBScanParser(ScanParser):
     def get_scan_title(self):
         return f'{self.scan_name}_{self.scan_number}'
 
-    @cached_property
+    @property
     def pars(self):
-        """The values recorded in the companion SMB-style `.par` file
-        for this scan (a dictionary where keys are the names of the
-        columns in the .par file, and values are the corresponding
-        value fro the .par file for this scan)."""
-        return self.get_pars()
+        if self._pars is None:
+            self._pars = self.get_pars()
+        return self._pars
 
     def get_pars(self):
         """Return a dictionary of values recorded in the .par file
@@ -315,9 +354,6 @@ class SMBScanParser(ScanParser):
 
         :rtype: dict[str,object]
         """
-        from csv import reader
-        from fnmatch import filter as fnmatch_filter
-        from json import load
         # JSON file holds titles for columns in the par file
         json_files = fnmatch_filter(
             os.listdir(self.scan_path),
@@ -383,7 +419,6 @@ class SMBScanParser(ScanParser):
         :type counter_name: str
         :rtype: str
         """
-        import re
         counter_gain = None
         for comment in self.spec_scan.comments:
             match = re.search(
@@ -405,9 +440,7 @@ class SMBScanParser(ScanParser):
 
 class LinearScanParser(ScanParser):
     """Partial implementation of a class representing a typical line
-    or mesh scan in SPEC. Supports parsing scans run with any of the
-    following macros: ascan, dscan, flyscan, flydscan, loopscan,
-    amesh, dmesh, flymesh, flydmesh, tseries.
+    or mesh scan in SPEC.
     """
     def __init__(self, spec_file_name, scan_number):
         super().__init__(spec_file_name, scan_number)
@@ -417,121 +450,74 @@ class LinearScanParser(ScanParser):
         self._spec_scan_shape = None
         self._spec_scan_dwell = None
 
-    @cached_property
+    @property
     def spec_scan_motor_mnes(self):
-        """Tuple of the motor mnemonic(s) scanned in this scan. If
-        more than one motor is scanned, the order of the mnemonics in
-        the tuple is the same as the order in which they were provided
-        to the macro as arguments."""
-        if self.spec_macro in ('flymesh', 'mesh', 'flydmesh', 'dmesh'):
-            m1_mne = self.spec_args[0]
-            try:
-                # Try post-summer-2022 format
-                dwell = float(self.spec_args[4])
-            except:
-                # Accommodate pre-summer-2022 format
-                m2_mne_i = 4
-            else:
-                m2_mne_i = 5
-            m2_mne = self.spec_args[m2_mne_i]
-            return (m1_mne, m2_mne)
-        if self.spec_macro in ('flyscan', 'ascan'):
-            return (self.spec_args[0],)
-        if self.spec_macro in ('tseries', 'loopscan'):
-            return ('Time',)
-        raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
-                           f'for scans of type {self.spec_macro}')
+        if self._spec_scan_motor_mnes is None:
+            self._spec_scan_motor_mnes = self.get_spec_scan_motor_mnes()
+        return self._spec_scan_motor_mnes
 
-    @cached_property
+    @property
     def spec_scan_motor_vals(self):
-        """Tuple of numpy array(s) containing the unique values
-        visited by the motor(s) scanned. If more than one motor was
-        scanned, the order of values in the tuple is the same as the
-        order in which each motor was provided to the macro as
-        arguments."""
-        if self.spec_macro in ('flymesh', 'mesh'):
-            m1_start = float(self.spec_args[1])
-            m1_end = float(self.spec_args[2])
-            m1_npt = int(self.spec_args[3]) + 1
-            try:
-                # Try post-summer-2022 format                                   
-                dwell = float(self.spec_args[4])
-            except:
-                # Accommodate pre-summer-2022 format                            
-                m2_start_i = 5
-                m2_end_i = 6
-                m2_nint_i = 7
-            else:
-                m2_start_i = 6
-                m2_end_i = 7
-                m2_nint_i = 8
-            m2_start = float(self.spec_args[m2_start_i])
-            m2_end = float(self.spec_args[m2_end_i])
-            m2_npt = int(self.spec_args[m2_nint_i]) + 1
-            fast_mot_vals = np.linspace(m1_start, m1_end, m1_npt)
-            slow_mot_vals = np.linspace(m2_start, m2_end, m2_npt)
-            return (fast_mot_vals, slow_mot_vals)
-        if self.spec_macro in ('flyscan', 'ascan'):
-            mot_vals = np.linspace(float(self.spec_args[1]),
-                                   float(self.spec_args[2]),
-                                   int(self.spec_args[3])+1)
-            return (mot_vals,)
-        if self.spec_macro in ('tseries', 'loopscan'):
-            return (self.spec_scan.data[:,0],)
-        raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
-                           f'for scans of type {self.spec_macro}')
+        if self._spec_scan_motor_vals is None:
+            self._spec_scan_motor_vals = self.get_spec_scan_motor_vals()
+        return self._spec_scan_motor_vals
 
-    @cached_property
+    @property
     def spec_scan_shape(self):
-        """A tuple representing the shape of the spec scan -- how many
-        unique points were visited in each dimension of the
-        scan. Order of number of unique points in the tuple goes from
-        fastest-moving dimension first, to slowest-moving dimension
-        last."""
-        if self.spec_macro in ('flymesh', 'mesh'):
-            fast_mot_npts = int(self.spec_args[3]) + 1
-            try:
-                # Try post-summer-2022 format
-                dwell = float(self.spec_args[4])
-            except:
-                # Accommodate pre-summer-2022 format
-                m2_nint_i = 7
-            else:
-                m2_nint_i = 8
-            slow_mot_npts = int(self.spec_args[m2_nint_i]) + 1
-            return (fast_mot_npts, slow_mot_npts)
-        if self.spec_macro in ('flyscan', 'ascan'):
-            mot_npts = int(self.spec_args[3])+1
-            return (mot_npts,)
-        if self.spec_macro in ('tseries', 'loopscan'):
-            return (len(np.array(self.spec_scan.data[:,0])),)
-        raise RuntimeError(f'{self.scan_title}: cannot determine scan shape '
-                           f'for scans of type {self.spec_macro}')
+        if self._spec_scan_shape is None:
+            self._spec_scan_shape = self.get_spec_scan_shape()
+        return self._spec_scan_shape
 
-    @cached_property
+    @property
     def spec_scan_dwell(self):
-        """The argument used for dwell time of the spec scan (a
-        float)."""
-        if self.macro in ('flymesh', 'mesh', 'flydmesh', 'dmesh'):
-            try:
-                # Try post-summer-2022 format                                   
-                dwell = float(self.spec_args[4])
-            except:
-                # Accommodate pre-summer-2022 format                            
-                dwell = float(self.spec_args[8])
-            return dwell
-        if self.spec_macro in ('flyscan', 'ascan'):
-            return float(self.spec_args[4])
-        if self.spec_macro in ('tseries', 'loopscan'):
-            return float(self.spec_args[1])
-        if self.spec_macro in ('wbslew_scan'):
-            return float(self.spec_args[3])
-        raise RuntimeError(f'{self.scan_title}: cannot determine dwell for '
-                           f'scans of type {self.spec_macro}')
+        if self._spec_scan_dwell is None:
+            self._spec_scan_dwell = self.get_spec_scan_dwell()
+        return self._spec_scan_dwell
+
+    def get_spec_scan_motor_mnes(self):
+        """Return the mnemonics of the SPEC motor(s) provided to the
+        macro for this scan. If there is more than one motor scanned
+        (in a "flymesh" scan, for example), the order of motors in the
+        returned tuple will go from the fastest moving motor first to
+        the slowest moving motor last.
+
+        :rtype: tuple
+        """
+        raise NotImplementedError
+
+    def get_spec_scan_motor_vals(self):
+        """Return the values visited by each of the scanned motors. If
+        there is more than one motor scanned (in a "flymesh" scan, for
+        example), the order of motor values in the returned tuple will
+        go from the fastest moving motor's values first to the slowest
+        moving motor's values last.
+
+        :rtype: tuple
+        """
+        raise NotImplementedError
+
+    def get_spec_scan_shape(self):
+        """Return the number of points visited by each of the scanned
+        motors. If there is more than one motor scanned (in a
+        "flymesh" scan, for example), the order of number of motor
+        values in the returned tuple will go from the number of points
+        visited by the fastest moving motor first to the the number of
+        points visited by the slowest moving motor last.
+
+        :rtype: tuple
+        """
+        raise NotImplementedError
+
+    def get_spec_scan_dwell(self):
+        """Return the dwell time for each point in the scan as it
+        appears in the command string.
+
+        :rtype: float
+        """
+        raise NotImplementedError
 
     def get_spec_scan_npts(self):
-        """Return the number of points collected in this SPEC scan --
-        the product of all items in `self.spec_scan_shape`
+        """Return the number of points collected in this SPEC scan.
 
         :rtype: int
         """
@@ -581,6 +567,107 @@ class LinearScanParser(ScanParser):
                 break
         return scan_step_index
 
+
+class FMBLinearScanParser(LinearScanParser, FMBScanParser):
+    """Partial implementation of a class representing a typical line
+    or mesh scan in SPEC collected at FMB.
+    """
+
+    def get_spec_scan_motor_mnes(self):
+        if self.spec_macro in ('flymesh', 'mesh', 'flydmesh', 'dmesh'):
+            m1_mne = self.spec_args[0]
+            try:
+                # Try post-summer-2022 format
+                dwell = float(self.spec_args[4])
+            except:
+                # Accommodate pre-summer-2022 format
+                m2_mne_i = 4
+            else:
+                m2_mne_i = 5
+            m2_mne = self.spec_args[m2_mne_i]
+            return (m1_mne, m2_mne)
+        if self.spec_macro in ('flyscan', 'ascan'):
+            return (self.spec_args[0],)
+        if self.spec_macro in ('tseries', 'loopscan'):
+            return ('Time',)
+        raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
+                           f'for scans of type {self.spec_macro}')
+
+    def get_spec_scan_motor_vals(self):
+        if self.spec_macro in ('flymesh', 'mesh', 'flydmesh', 'dmesh'):
+            m1_start = float(self.spec_args[1])
+            m1_end = float(self.spec_args[2])
+            m1_npt = int(self.spec_args[3]) + 1
+            try:
+                # Try post-summer-2022 format
+                dwell = float(self.spec_args[4])
+            except:
+                # Accommodate pre-summer-2022 format
+                m2_start_i = 5
+                m2_end_i = 6
+                m2_nint_i = 7
+            else:
+                m2_start_i = 6
+                m2_end_i = 7
+                m2_nint_i = 8
+            m2_start = float(self.spec_args[m2_start_i])
+            m2_end = float(self.spec_args[m2_end_i])
+            m2_npt = int(self.spec_args[m2_nint_i]) + 1
+            fast_mot_vals = np.linspace(m1_start, m1_end, m1_npt)
+            slow_mot_vals = np.linspace(m2_start, m2_end, m2_npt)
+            return (fast_mot_vals, slow_mot_vals)
+        if self.spec_macro in ('flyscan', 'ascan'):
+            mot_vals = np.linspace(float(self.spec_args[1]),
+                                   float(self.spec_args[2]),
+                                   int(self.spec_args[3])+1)
+            return (mot_vals,)
+        if self.spec_macro in ('tseries', 'loopscan'):
+            return (self.spec_scan.data[:,0],)
+        raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
+                           f'for scans of type {self.spec_macro}')
+
+    def get_spec_scan_shape(self):
+        if self.spec_macro in ('flymesh', 'mesh', 'flydmesh', 'dmesh'):
+            fast_mot_npts = int(self.spec_args[3]) + 1
+            try:
+                # Try post-summer-2022 format
+                dwell = float(self.spec_args[4])
+            except:
+                # Accommodate pre-summer-2022 format
+                m2_nint_i = 7
+            else:
+                m2_nint_i = 8
+            slow_mot_npts = int(self.spec_args[m2_nint_i]) + 1
+            return (fast_mot_npts, slow_mot_npts)
+        if self.spec_macro in ('flyscan', 'ascan'):
+            mot_npts = int(self.spec_args[3])+1
+            return (mot_npts,)
+        if self.spec_macro in ('tseries', 'loopscan'):
+            return (len(np.array(self.spec_scan.data[:,0])),)
+        raise RuntimeError(f'{self.scan_title}: cannot determine scan shape '
+                           f'for scans of type {self.spec_macro}')
+
+    def get_spec_scan_dwell(self):
+        if self.macro in ('flymesh', 'mesh', 'flydmesh', 'dmesh'):
+            try:
+                # Try post-summer-2022 format
+                dwell = float(self.spec_args[4])
+            except:
+                # Accommodate pre-summer-2022 format
+                dwell = float(self.spec_args[8])
+            return dwell
+        if self.spec_macro in ('flyscan', 'ascan'):
+            return float(self.spec_args[4])
+        if self.spec_macro in ('tseries', 'loopscan'):
+            return float(self.spec_args[1])
+        raise RuntimeError(f'{self.scan_title}: cannot determine dwell for '
+                           f'scans of type {self.spec_macro}')
+
+    def get_detector_data_path(self):
+        return os.path.join(self.scan_path, self.scan_title)
+
+
+
 @cache
 def list_fmb_saxswaxs_detector_files(detector_data_path, detector_prefix):
     """Return a sorted list of all data files for the given detector
@@ -601,16 +688,13 @@ def list_fmb_saxswaxs_detector_files(detector_data_path, detector_prefix):
         if detector_prefix in f
         and not f.endswith('.log')])
 
-class FMBSAXSWAXSScanParser(LinearScanParser, FMBScanParser):
+class FMBSAXSWAXSScanParser(FMBLinearScanParser):
     """Concrete implementation of a class representing a scan taken
     with the typical SAXS/WAXS setup at FMB.
     """
 
     def get_scan_title(self):
         return f'{self.scan_name}_{self.scan_number:03d}'
-
-    def get_detector_data_path(self):
-        return os.path.join(self.scan_path, self.scan_title)
 
     def get_detector_data_file(self, detector_prefix, scan_step_index:int):
         detector_files = list_fmb_saxswaxs_detector_files(
@@ -631,17 +715,22 @@ class FMBSAXSWAXSScanParser(LinearScanParser, FMBScanParser):
                 'Could not find a matching detector data file for detector '
                 + f'{detector_prefix} at scan step index {scan_step_index}')
 
+    def get_detector_data(self, detector_prefix, scan_step_index:int):
+        import fabio
+        image_file = self.get_detector_data_file(detector_prefix,
+                                                 scan_step_index)
+        with fabio.open(image_file) as det_file:
+            image_data = det_file.data
+        return image_data
 
-class FMBXRFScanParser(LinearScanParser, FMBScanParser):
+
+class FMBXRFScanParser(FMBLinearScanParser):
     """Concrete implementation of a class representing a scan taken
     with the typical XRF setup at FMB.
     """
 
     def get_scan_title(self):
         return f'{self.scan_name}_scan{self.scan_number}'
-
-    def get_detector_data_path(self):
-        return os.path.join(self.scan_path, self.scan_title)
 
     def get_detector_data_file(self, detector_prefix, scan_step_index:int):
         scan_step = self.get_scan_step(scan_step_index)
@@ -654,21 +743,119 @@ class FMBXRFScanParser(LinearScanParser, FMBScanParser):
                            f'({scan_step_index})')
 
     def get_detector_data(self, detector_prefix, scan_step_index:int):
-        scan_step = self.get_scan_step(scan_step_index)
-        all_data = super().get_detector_data(detector_prefix, scan_step_index)
-        return all_data[scan_step[0]]
+        # Third party modules
+        from h5py import File
 
+        detector_file = self.get_detector_data_file(
+            detector_prefix, scan_step_index)
+        scan_step = self.get_scan_step(scan_step_index)
+        with File(detector_file) as h5_file:
+            detector_data = \
+                h5_file['/entry/instrument/detector/data'][scan_step[0]]
+        return detector_data
 
 
 class SMBLinearScanParser(LinearScanParser, SMBScanParser):
     """Concrete implementation of a class representing a scan taken
     with the typical powder diffraction setup at SMB.
     """
+
+    def get_spec_scan_dwell(self):
+        if self.spec_macro in ('flymesh', 'mesh'):
+            try:
+                # Try post-summer-2022 format
+                dwell = float(self.spec_args[4])
+            except:
+                # Accommodate pre-summer-2022 format
+                dwell = float(self.spec_args[8])
+            return dwell
+        if self.spec_macro in ('flyscan', 'ascan'):
+            return float(self.spec_args[4])
+        if self.spec_macro == 'tseries':
+            return float(self.spec_args[1])
+        if self.spec_macro == 'wbslew_scan':
+            return float(self.spec_args[3])
+        raise RuntimeError(f'{self.scan_title}: cannot determine dwell time '
+                           f'for scans of type {self.spec_macro}')
+
+    def get_spec_scan_motor_mnes(self):
+        if self.spec_macro in ('flymesh', 'mesh'):
+            m1_mne = self.spec_args[0]
+            try:
+                # Try post-summer-2022 format
+                dwell = float(self.spec_args[4])
+            except:
+                # Accommodate pre-summer-2022 format
+                m2_mne_i = 4
+            else:
+                m2_mne_i = 5
+            m2_mne = self.spec_args[m2_mne_i]
+            return (m1_mne, m2_mne)
+        if self.spec_macro in ('flyscan', 'ascan'):
+            return (self.spec_args[0],)
+        if self.spec_macro in ('tseries', 'loopscan'):
+            return ('Time',)
+        raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
+                           f'for scans of type {self.spec_macro}')
+
+    def get_spec_scan_motor_vals(self):
+        if self.spec_macro in ('flymesh', 'mesh'):
+            m1_start = float(self.spec_args[1])
+            m1_end = float(self.spec_args[2])
+            m1_npt = int(self.spec_args[3]) + 1
+            try:
+                # Try post-summer-2022 format
+                dwell = float(self.spec_args[4])
+            except:
+                # Accommodate pre-summer-2022 format
+                m2_start_i = 5
+                m2_end_i = 6
+                m2_nint_i = 7
+            else:
+                m2_start_i = 6
+                m2_end_i = 7
+                m2_nint_i = 8
+            m2_start = float(self.spec_args[m2_start_i])
+            m2_end = float(self.spec_args[m2_end_i])
+            m2_npt = int(self.spec_args[m2_nint_i]) + 1
+            fast_mot_vals = np.linspace(m1_start, m1_end, m1_npt)
+            slow_mot_vals = np.linspace(m2_start, m2_end, m2_npt)
+            return (fast_mot_vals, slow_mot_vals)
+        if self.spec_macro in ('flyscan', 'ascan'):
+            mot_vals = np.linspace(float(self.spec_args[1]),
+                                   float(self.spec_args[2]),
+                                   int(self.spec_args[3])+1)
+            return (mot_vals,)
+        if self.spec_macro in ('tseries', 'loopscan'):
+            return (self.spec_scan.data[:,0],)
+        raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
+                           f'for scans of type {self.spec_macro}')
+
+    def get_spec_scan_shape(self):
+        if self.spec_macro in ('flymesh', 'mesh'):
+            fast_mot_npts = int(self.spec_args[3]) + 1
+            try:
+                # Try post-summer-2022 format
+                dwell = float(self.spec_args[4])
+            except:
+                # Accommodate pre-summer-2022 format
+                m2_nint_i = 7
+            else:
+                m2_nint_i = 8
+            slow_mot_npts = int(self.spec_args[m2_nint_i]) + 1
+            return (fast_mot_npts, slow_mot_npts)
+        if self.spec_macro in ('flyscan', 'ascan'):
+            mot_npts = int(self.spec_args[3])+1
+            return (mot_npts,)
+        if self.spec_macro in ('tseries', 'loopscan'):
+            return (len(np.array(self.spec_scan.data[:,0])),)
+        raise RuntimeError(f'{self.scan_title}: cannot determine scan shape '
+                           f'for scans of type {self.spec_macro}')
+
     def get_detector_data_path(self):
         return os.path.join(self.scan_path, str(self.scan_number))
 
     def get_detector_data_file(self, detector_prefix, scan_step_index:int):
-        from fnmatch import filter as fnmatch_filter
         scan_step = self.get_scan_step(scan_step_index)
         if len(scan_step) == 1:
             scan_step = (0, *scan_step)
@@ -685,6 +872,16 @@ class SMBLinearScanParser(LinearScanParser, SMBScanParser):
                            f'file for detector {detector_prefix} scan step '
                            f'({scan_step_index})')
 
+    def get_detector_data(self, detector_prefix, scan_step_index:int):
+        # Third party modules
+        from h5py import File
+
+        image_file = self.get_detector_data_file(
+            detector_prefix, scan_step_index)
+        with File(image_file) as h5_file:
+            image_data = h5_file['/entry/data/data'][0]
+        return image_data
+
 
 class RotationScanParser(ScanParser):
     """Partial implementation of a class representing a rotation
@@ -696,17 +893,17 @@ class RotationScanParser(ScanParser):
         self._starting_image_index = None
         self._starting_image_offset = None
 
-    @cached_property
+    @property
     def starting_image_index(self):
-        """The index of the first frame of detector data collected by
-        this scan."""
-        return self.get_starting_image_index()
+        if self._starting_image_index is None:
+            self._starting_image_index = self.get_starting_image_index()
+        return self._starting_image_index
 
-    @cached_property
+    @property
     def starting_image_offset(self):
-        """The offset of the index of the first "good" frame of
-        detector data collected by this scan."""
-        return self.get_starting_image_offset()
+        if self._starting_image_offset is None:
+            self._starting_image_offset = self.get_starting_image_offset()
+        return self._starting_image_offset
 
     def get_starting_image_index(self):
         """Return the first frame of the detector data collected by
@@ -785,6 +982,7 @@ class FMBRotationScanParser(RotationScanParser, FMBScanParser):
 
     def get_all_detector_data_in_file(
             self, detector_prefix, scan_step_index=None):
+        # Third party modules
         from h5py import File
 
         detector_file = self.get_detector_data_file(detector_prefix)
@@ -812,7 +1010,6 @@ class FMBRotationScanParser(RotationScanParser, FMBScanParser):
                 detector_prefix, scan_step_index)
         except:
             # Detector files in tiff format
-            from pyspec.file.tiff import TiffFile
             if scan_step_index is None:
                 detector_data = []
                 for index in range(self.spec_scan_npts):
@@ -864,9 +1061,11 @@ class SMBRotationScanParser(RotationScanParser, SMBScanParser):
         if par_file is not None:
             self._par_file = par_file
 
-    @cached_property
+    @property
     def scan_type(self):
-        return self.get_scan_type()
+        if self._scan_type is None:
+            self._scan_type = self.get_scan_type()
+        return self._scan_type
 
     def get_spec_scan_data(self):
         spec_scan_data = super().get_spec_scan_data()
@@ -889,7 +1088,6 @@ class SMBRotationScanParser(RotationScanParser, SMBScanParser):
 
     def get_starting_image_index(self):
         try:
-            import re
             junkstart = int(self.pars['junkstart'])
             #RV temp fix for error in par files at Kate's beamline
             #Remove this and self._katefix when no longer needed
@@ -935,7 +1133,6 @@ class SMBRotationScanParser(RotationScanParser, SMBScanParser):
                            f'({scan_step_index})')
 
     def get_detector_data(self, detector_prefix, scan_step_index=None):
-        from pyspec.file.tiff import TiffFile
         if scan_step_index is None:
             detector_data = []
             for index in range(self.spec_scan_npts):
