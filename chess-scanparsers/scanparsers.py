@@ -666,7 +666,8 @@ def list_fmb_saxswaxs_detector_files(detector_data_path, detector_prefix):
     return sorted(
         [f for f in os.listdir(detector_data_path)
         if detector_prefix in f
-        and not f.endswith('.log')])
+        and not f.endswith('.log')
+        and not f.endswith('_master.h5')])
 
 class FMBSAXSWAXSScanParser(LinearScanParser, FMBScanParser):
     """Concrete implementation of a class representing a scan taken
