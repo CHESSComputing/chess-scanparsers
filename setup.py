@@ -19,7 +19,7 @@ with open('README.md', 'r') as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name='chess-scanparsers',
+    name='chess_scanparsers',
     version=version,
     author='Keara Soloway, Rolf Verberg',
     author_email='',
@@ -27,8 +27,8 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type='text/markdown',
     url='https://github.com/CHESSComputing/chess-scanparsers',
-    packages=['chess-scanparsers'],
-    package_dir={'chess-scanparsers': 'chess-scanparsers'},
+    packages=['chess_scanparsers'],
+    package_dir={'chess_scanparsers': 'chess_scanparsers'},
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: MIT License',
