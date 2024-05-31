@@ -1,5 +1,5 @@
-#!?usr/bin/eenv python3
+#!usr/bin/env python3
 
-from scanparsers import *
+from .scanparsers import *
 
 version = 'PACKAGE_VERSION'
