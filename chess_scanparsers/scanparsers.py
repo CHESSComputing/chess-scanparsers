@@ -420,7 +420,7 @@ class SMBScanParser(ScanParser):
         :rtype: str
         """
         counter_gain = None
-        for comment in self.spec_scan.comments:
+        for comment in self.spec_scan.comments + self.spec_scan.user_lines:
             match = re.search(
                 f'{counter_name} gain: '  # start of counter gain comments
                 '(?P<gain_value>\d+) '  # gain numerical value
