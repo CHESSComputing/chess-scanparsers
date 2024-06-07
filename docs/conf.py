@@ -6,7 +6,7 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'chess-scanparsers'
+project = 'chess_scanparsers'
 copyright = '2024 CHESSComputing'
 author = 'K. Soloway, R. Verberg'
 release = 'PACKAGE_VERSION'
@@ -20,7 +20,7 @@ extensions = [
     'sphinxarg.ext'
 ]
 autodoc2_packages = [
-    '../chess-scanparsers'
+    '../chess_scanparsers'
 ]
 autodoc2_render_plugin = 'myst'
 myst_enable_extensions = ['fieldlist']
