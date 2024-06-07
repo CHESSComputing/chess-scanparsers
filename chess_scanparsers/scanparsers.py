@@ -20,7 +20,7 @@ Basic usage examples:
 1. Print out the position of a the SPEC positioner motor with mnemonic
 `'mne0'` for a SAXS/WAXS scan collected at FMB:
     ```python
-    from CHAP.utils.scanparsers import FMBSAXSWAXSScanParser
+    from chess_scanparsers import FMBSAXSWAXSScanParser
     sp = FMBSAXSWAXSScanParser('/path/to/fmb/saxswaxs/spec/file', 1)
     print(sp.get_spec_positioner_value('mne0'))
     ```
@@ -28,7 +28,7 @@ Basic usage examples:
 `'det'` over a rotation series collected at SMB in the variable
 `data`:
     ```python
-    from CHAP.utils.scanparsers import SMBRotationScanParser
+    from chess_scanparsers import SMBRotationScanParser
     sp = SMBRotationScanParser('/path/to/smb/rotation/spec/file', 1)
     data = sp.get_detector_data('det')
     ```
