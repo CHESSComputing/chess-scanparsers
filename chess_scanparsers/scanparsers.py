@@ -285,7 +285,12 @@ class ScanParser:
         :type scan_step_index: int
         :rtype: numpy.ndarray
         """
-        raise NotImplementedError
+        import fabio
+        image_file = self.get_detector_data_file(detector_prefix,
+                                                 scan_step_index)
+        with fabio.open(image_file, 'r') as det_file:
+            image_data = det_file.data
+        return image_data
 
     def get_spec_positioner_value(self, positioner_name):
         """Return the value of a spec positioner recorded before this
@@ -699,14 +704,6 @@ class FMBSAXSWAXSScanParser(LinearScanParser, FMBScanParser):
                 'Could not find a matching detector data file for detector '
                 + f'{detector_prefix} at scan step index {scan_step_index}')
 
-    def get_detector_data(self, detector_prefix, scan_step_index:int):
-        import fabio
-        image_file = self.get_detector_data_file(detector_prefix,
-                                                 scan_step_index)
-        with fabio.open(image_file) as det_file:
-            image_data = det_file.data
-        return image_data
-
 
 class FMBXRFScanParser(LinearScanParser, FMBScanParser):
     """Concrete implementation of a class representing a scan taken
@@ -765,16 +762,6 @@ class SMBLinearScanParser(LinearScanParser, SMBScanParser):
         raise RuntimeError(f'{self.scan_title}: could not find detector image '
                            f'file for detector {detector_prefix} scan step '
                            f'({scan_step_index})')
-
-    def get_detector_data(self, detector_prefix, scan_step_index:int):
-        # Third party modules
-        from h5py import File
-
-        image_file = self.get_detector_data_file(
-            detector_prefix, scan_step_index)
-        with File(image_file) as h5_file:
-            image_data = h5_file['/entry/data/data'][0]
-        return image_data
 
 
 class RotationScanParser(ScanParser):
