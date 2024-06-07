@@ -584,7 +584,7 @@ class LinearScanParser(ScanParser):
 
         :rtype: float
         """
-        if self.macro in ('flymesh', 'mesh', 'flydmesh', 'dmesh'):
+        if self.spec_macro in ('flymesh', 'mesh', 'flydmesh', 'dmesh'):
             try:
                 # Try post-summer-2022 format
                 dwell = float(self.spec_args[4])
