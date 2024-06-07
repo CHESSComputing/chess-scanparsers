@@ -1356,3 +1356,140 @@ def get_all_mca_data_h5(filename):
                 data = np.concatenate((data[1:], np.asarray([data[0]])))
 
     return data
+
+
+@cache
+def list_qm2_detector_files(detector_data_path, detector_prefix):
+    """Return a sorted list of all data files for the given detector
+    in the given directory.
+
+    :param detector_data_path: directory in which to look for detector
+        data files
+    :type detector_data_path: str
+    :param detector_prefix: detector name to list files for
+    :type detector_prefix: str
+    :return: list of detector filenames
+    :rtype: list[str]
+    """
+    return sorted(
+        [f for f in os.listdir(detector_data_path)
+        if detector_prefix in f
+        and not f.endswith('.log')
+        and not f.endswith('_master.h5')])
+
+class QM2ScanParser(LinearScanParser):
+    """Parser for SPEC scans taken at QM2 (ID4B)"""
+    def __init__(self, spec_file_name, scan_number):
+        super().__init__(spec_file_name, scan_number)
+
+        self._sample_id = None
+        self._temperature = None
+
+    def get_scan_name(self):
+        return os.path.basename(self.spec_file_name)
+
+    def get_scan_title(self):
+        return f'{self.scan_name}_{self.scan_number:03d}'
+
+    def get_detector_data_path(self):
+        return os.path.join(
+            self.scan_path, 'raw6M', self.scan_name,
+            self.sample_id, str(int(self.temperature)), self.scan_title)
+
+    def get_detector_data_file(self, detector_prefix, scan_step_index):
+        detector_files = list_qm2_detector_files(
+            self.detector_data_path, detector_prefix)
+        if len(detector_files) == self.spec_scan_npts:
+            return os.path.join(
+                self.detector_data_path, detector_files[scan_step_index])
+        else:
+            scan_step = self.get_scan_step(scan_step_index)
+            for f in detector_files:
+                filename, _ = os.path.splitext(f)
+                file_indices = tuple(
+                    [int(i) for i in \
+                     filename.split('_')[-len(self.spec_scan_shape):]])
+                if file_indices == scan_step:
+                    return os.path.join(self.detector_data_path, f)
+            raise RuntimeError(
+                'Could not find a matching detector data file for detector '
+                + f'{detector_prefix} at scan step index {scan_step_index}')
+
+    @property
+    def sample_id(self):
+        if self._sample_id is None:
+            self._sample_id = self.get_sample_id()
+        return self._sample_id
+
+    def get_sample_id(self):
+        """Return the sample is used for this scan
+
+        :rtype: str
+        """
+        basedir = os.path.join(self.scan_path, 'raw6M', self.scan_name)
+        sample_ids = os.listdir(basedir)
+        for sample_id in sample_ids:
+            if os.path.isdir(os.path.join(
+                    basedir, sample_id, str(int(self.temperature)),
+                    self.scan_title)):
+                return sample_id
+        raise RuntimeError('Could not find sample_id.')
+
+    @property
+    def temperature(self):
+        if self._temperature is None:
+            self._temperature = self.get_temperature()
+        return self._temperature
+
+    def get_temperature(self):
+        """Go through comment lines from previous scans in the file to
+        find the most comment added most recently before this scan was
+        run that has the format "Temperature Setpoint at <x>." Parse
+        and return the value of <x> from this line.
+
+        :raises RuntimeError: If no value for temperature can be found
+        :rtype: float
+        """
+        from functools import cmp_to_key
+        import re
+
+        # Only bother parsing comments from scans taken BEFORE this one.
+        def get_epoch(datetime_str):
+            """Given an SPEC-style datetime string, return the
+            epoch.
+            """
+            from datetime import datetime
+            return datetime.strptime(
+                datetime_str, '%a %b %d %H:%M:%S %Y').timestamp()
+
+        tf = get_epoch(self.spec_scan.date)
+        comments = []
+        for n, _scans in self.spec_file.scans.items():
+            for _s in _scans:
+                if get_epoch(_s.date) < tf:
+                    comments.extend(_s.comments)
+        for h in self.spec_file._headers:
+            for c in h._comment_lines:
+                try:
+                    dt, msg = c.split('  ')
+                    dt = dt.replace('.', '')
+                    if get_epoch(dt) < tf:
+                        comments.append(c)
+                except:
+                    continue
+
+        # Sort the comments -- newest first, oldest last.
+        def compare_comments(c1, c2):
+            dt1, msg = c1.split('  ')
+            dt2, msg = c2.split('  ')
+            dt1 = dt1.replace('.', '')
+            dt2 = dt2.replace('.', '')
+            return get_epoch(dt2) - get_epoch(dt1)
+
+        for c in sorted(comments, key=cmp_to_key(compare_comments)):
+            match = re.search(
+                r'Temperature Setpoint at (?P<temperature>\d+).', c)
+            if match:
+                return float(match.group('temperature'))
+
+        raise RuntimeError('No temperature found.')
