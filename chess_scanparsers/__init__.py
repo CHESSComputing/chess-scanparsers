@@ -35,7 +35,7 @@ def choose_scanparser(station, experiment):
     elif station == 'id3b':
         if experiment == 'giwaxs':
             return FMBGIWAXSScanParser
-        elif experiment == 'saxswaxs':
+        elif experiment in ('saxswaxs', 'powder'):
             return FMBSAXSWAXSScanParser
         elif experiment == 'tomo':
             return FMBRotationScanParser
