@@ -1,4 +1,4 @@
-#!/usr/Abin/env python3
+#!/usr/bin/env python3
 
 # -*- coding: utf-8 -*-
 
@@ -90,6 +90,7 @@ class ScanParser:
                     and len(scanparser.spec_args) == 5):
                 self._rams4_args = scanparser.spec_args
 
+    def __repr__(self):
         return (f'{self.__class__.__name__}'
                 f'({self.spec_file_name}, {self.scan_number}) '
                 f'-- {self.spec_command}')
@@ -288,7 +289,7 @@ class ScanParser:
         import fabio
         image_file = self.get_detector_data_file(detector_prefix,
                                                  scan_step_index)
-        with fabio.open(image_file, 'r') as det_file:
+        with fabio.open(image_file) as det_file:
             image_data = det_file.data
         return image_data
 
@@ -340,6 +341,7 @@ class SMBScanParser(ScanParser):
 
         self._pars = None
         self._par_file_pattern = f'*-*-{self.scan_name}'
+        self._par_file = None
 
     def get_scan_name(self):
         return os.path.basename(self.scan_path)
@@ -380,9 +382,7 @@ class SMBScanParser(ScanParser):
             raise RuntimeError(f'{self.scan_title}: cannot find scan pars '
                                'without a "SCAN_N" column in the par file')
 
-        if hasattr(self, '_par_file'):
-            par_file = self._par_file
-        else:
+        if self._par_file is None
             par_files = fnmatch_filter(
                 os.listdir(self.scan_path),
                 f'{self._par_file_pattern}.par')
@@ -390,15 +390,17 @@ class SMBScanParser(ScanParser):
                 raise RuntimeError(f'{self.scan_title}: cannot find the .par '
                                    'file for this scan directory')
             par_file = os.path.join(self.scan_path, par_files[0])
+            self._par_file = par_file
         par_dict = None
-        with open(par_file) as f:
+        with open(self._par_file) as f:
             par_reader = reader(f, delimiter=' ')
             for row in par_reader:
                 if len(row) == len(par_col_names):
                     row_scann = int(row[scann_col_idx])
                     if row_scann == self.scan_number:
                         par_dict = {}
-                        for par_col_idx,par_col_name in par_file_cols.items():
+                        for par_col_idx,par_col_name in (
+                                self._par_file_cols.items()):
                             # Convert the string par value from the
                             # file to an int or float, if possible.
                             par_value = row[int(par_col_idx)]
@@ -417,8 +419,8 @@ class SMBScanParser(ScanParser):
         return par_dict
 
     def get_counter_gain(self, counter_name):
-        """Return the gain of a counter as recorded in the comments of
-        a scan in a SPEC file converted to nA/V.
+        """Return the gain of a counter as recorded in the comments or
+        user lines of a scan in a SPEC file converted to nA/V.
 
         :param counter_name: the name of the counter
         :type counter_name: str
@@ -436,6 +438,7 @@ class SMBScanParser(ScanParser):
                 gain_scalar = 1 if unit_prefix == 'n' \
                     else 1e3 if unit_prefix == 'u' else 1e6
                 counter_gain = f'{float(match["gain_value"])*gain_scalar} nA/V'
+                break
 
         if counter_gain is None:
             raise RuntimeError(f'{self.scan_title}: could not get gain for '
@@ -452,6 +455,7 @@ class LinearScanParser(ScanParser):
 
         self._spec_scan_motor_mnes = None
         self._spec_scan_motor_vals = None
+        self._spec_scan_motor_vals_relative = None
         self._spec_scan_shape = None
         self._spec_scan_dwell = None
 
@@ -466,6 +470,13 @@ class LinearScanParser(ScanParser):
         if self._spec_scan_motor_vals is None:
             self._spec_scan_motor_vals = self.get_spec_scan_motor_vals()
         return self._spec_scan_motor_vals
+
+    @property
+    def spec_scan_motor_vals_relative(self):
+        if self._spec_scan_motor_vals_relative is None:
+            self._spec_scan_motor_vals_relative = \
+                self.get_spec_scan_motor_vals(relative=True)
+        return self._spec_scan_motor_vals_relative
 
     @property
     def spec_scan_shape(self):
@@ -500,14 +511,14 @@ class LinearScanParser(ScanParser):
                 m2_mne_i = 5
             m2_mne = self.spec_args[m2_mne_i]
             return (m1_mne, m2_mne)
-        if self.spec_macro in ('flyscan', 'ascan'):
+        if self.spec_macro in ('flyscan', 'ascan', 'flydscan', 'dscan'):
             return (self.spec_args[0],)
         if self.spec_macro in ('tseries', 'loopscan'):
             return ('Time',)
         raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
                            f'for scans of type {self.spec_macro}')
 
-    def get_spec_scan_motor_vals(self):
+    def get_spec_scan_motor_vals(self, relative=False):
         """Return the values visited by each of the scanned motors. If
         there is more than one motor scanned (in a "flymesh" scan, for
         example), the order of motor values in the returned tuple will
@@ -516,7 +527,7 @@ class LinearScanParser(ScanParser):
 
         :rtype: tuple
         """
-        if self.spec_macro in ('flymesh', 'mesh'):
+        if self.spec_macro in ('flymesh', 'mesh', 'flydmesh', 'dmesh'):
             m1_start = float(self.spec_args[1])
             m1_end = float(self.spec_args[2])
             m1_npt = int(self.spec_args[3]) + 1
@@ -537,11 +548,19 @@ class LinearScanParser(ScanParser):
             m2_npt = int(self.spec_args[m2_nint_i]) + 1
             fast_mot_vals = np.linspace(m1_start, m1_end, m1_npt)
             slow_mot_vals = np.linspace(m2_start, m2_end, m2_npt)
+            if relative:
+                fast_mot_vals -= self.get_spec_positioner_value(
+                    self.spec_scan_motor_mnes[0])
+                slow_mot_vals -= self.get_spec_positioner_value(
+                    self.spec_scan_motor_mnes[1])
             return (fast_mot_vals, slow_mot_vals)
-        if self.spec_macro in ('flyscan', 'ascan'):
+        if self.spec_macro in ('flyscan', 'ascan', 'flydscan', 'dscan'):
             mot_vals = np.linspace(float(self.spec_args[1]),
                                    float(self.spec_args[2]),
                                    int(self.spec_args[3])+1)
+            if relative:
+                mot_vals -= self.get_spec_positioner_value(
+                    self.spec_scan_motor_mnes[0])
             return (mot_vals,)
         if self.spec_macro in ('tseries', 'loopscan'):
             return (self.spec_scan.data[:,0],)
@@ -558,7 +577,7 @@ class LinearScanParser(ScanParser):
 
         :rtype: tuple
         """
-        if self.spec_macro in ('flymesh', 'mesh'):
+        if self.spec_macro in ('flymesh', 'mesh', 'flydmesh', 'dmesh'):
             fast_mot_npts = int(self.spec_args[3]) + 1
             try:
                 # Try post-summer-2022 format
@@ -570,8 +589,8 @@ class LinearScanParser(ScanParser):
                 m2_nint_i = 8
             slow_mot_npts = int(self.spec_args[m2_nint_i]) + 1
             return (fast_mot_npts, slow_mot_npts)
-        if self.spec_macro in ('flyscan', 'ascan'):
-            mot_npts = int(self.spec_args[3])+1
+        if self.spec_macro in ('flyscan', 'ascan', 'flydscan', 'dscan'):
+            mot_npts = int(self.spec_args[-2])+1
             return (mot_npts,)
         if self.spec_macro in ('tseries', 'loopscan'):
             return (len(np.array(self.spec_scan.data[:,0])),)
@@ -592,8 +611,8 @@ class LinearScanParser(ScanParser):
                 # Accommodate pre-summer-2022 format
                 dwell = float(self.spec_args[8])
             return dwell
-        if self.spec_macro in ('flyscan', 'ascan'):
-            return float(self.spec_args[4])
+        if self.spec_macro in ('flyscan', 'ascan', 'flydscan', 'dscan'):
+            return float(self.spec_args[-1])
         if self.spec_macro in ('tseries', 'loopscan'):
             return float(self.spec_args[1])
         if self.spec_macro in ('wbslew_scan'):
@@ -1089,6 +1108,41 @@ class SMBMCAScanParser(MCAScanParser, SMBLinearScanParser):
                     + f'{detector_data_format}. Allowed values are: '
                     + ', '.join(self.detector_data_formats))
 
+    def get_spec_scan_motor_vals(self, relative=True):
+        if not relative:
+            # The scanned motor's recorded position in the spec.log
+            # file's "#P" lines does not always give the right offset
+            # to use to obtain absolute motor postions from relative
+            # motor positions (or relative from actual). Sometimes,
+            # the labx/y/z/ometotal value from the scan's .par file is
+            # the quantity for the offset that _should_ be used, but
+            # there is currently no consistent way to determine when
+            # to use the labx/y/z/ometotal .par file value and when to
+            # use the spec file "#P" lines value. Because the relative
+            # motor values are the only ones currently used in EDD
+            # workflows, obtain them from relevant values available in
+            # the .par file, and defer implementation for absolute
+            # motor postions to later.
+            return super().get_spec_scan_motor_vals(relative=True)
+            # raise NotImplementedError('Only relative motor values are available.')
+        if self.spec_macro in ('flymesh', 'mesh', 'flydmesh', 'dmesh'):
+            mot_vals_axis0 = np.linspace(self.pars['fly_axis0_start'],
+                                         self.pars['fly_axis0_end'],
+                                         self.pars['fly_axis0_npts'])
+            mot_vals_axis1 = np.linspace(self.pars['fly_axis1_start'],
+                                         self.pars['fly_axis1_end'],
+                                         self.pars['fly_axis1_npts'])
+            return (mot_vals_axis0, mot_vals_axis1)
+        if self.spec_macro in ('flyscan', 'ascan', 'flydscan', 'dscan'):
+            mot_vals = np.linspace(self.pars['fly_axis0_start'],
+                                   self.pars['fly_axis0_end'],
+                                   self.pars['fly_axis0_npts'])
+            return (mot_vals,)
+        if self.spec_macro in ('tseries', 'loopscan'):
+            return (self.spec_scan.data[:,0],)
+        raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
+                           f'for scans of type {self.spec_macro}')
+
     def init_detector_data_format(self):
         """Determine and set a value for the instance variable
         `detector_data_format` based on the presence / absence of
@@ -1257,7 +1311,7 @@ class SMBMCAScanParser(MCAScanParser, SMBLinearScanParser):
         """Return a 2D array of all MCA spectra collected by a
         detector in the h5 file format during the scan.
 
-        :param element_index: The index of a particualr MCA element to
+        :param element_index: The index of a particular MCA element to
             return data for.
         :type element_index: int
         :returns: 2D array of MCA spectra
@@ -1275,7 +1329,7 @@ class SMBMCAScanParser(MCAScanParser, SMBLinearScanParser):
                 full_filename)[:,element_index,:]
             i_0 = i * self.spec_scan_shape[0]
             if len(self.spec_scan_shape) == 2:
-                i_f = i_0 + self.spec_scan_shape[1]
+                i_f = i_0 + self.spec_scan_shape[0]
             else:
                 i_f = self.spec_scan_npts
             detector_data[i_0:i_f] = element_data
