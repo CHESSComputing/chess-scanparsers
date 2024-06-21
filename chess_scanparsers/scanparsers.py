@@ -382,7 +382,7 @@ class SMBScanParser(ScanParser):
             raise RuntimeError(f'{self.scan_title}: cannot find scan pars '
                                'without a "SCAN_N" column in the par file')
 
-        if self._par_file is None
+        if self._par_file is None:
             par_files = fnmatch_filter(
                 os.listdir(self.scan_path),
                 f'{self._par_file_pattern}.par')
