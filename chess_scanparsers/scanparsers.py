@@ -399,8 +399,7 @@ class SMBScanParser(ScanParser):
                     row_scann = int(row[scann_col_idx])
                     if row_scann == self.scan_number:
                         par_dict = {}
-                        for par_col_idx,par_col_name in (
-                                self._par_file_cols.items()):
+                        for par_col_idx,par_col_name in par_file_cols.items():
                             # Convert the string par value from the
                             # file to an int or float, if possible.
                             par_value = row[int(par_col_idx)]
