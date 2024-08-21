@@ -1,5 +1,6 @@
 #!usr/bin/env python3
 
+# Local modules
 from .scanparsers import *
 
 version = 'PACKAGE_VERSION'
