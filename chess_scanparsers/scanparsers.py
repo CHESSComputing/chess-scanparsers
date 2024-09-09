@@ -737,7 +737,10 @@ class FMBGIWAXSScanParser(LinearScanParser, FMBScanParser):
     def get_scan_title(self):
         return f'{self.scan_name}_{self.scan_number:03d}'
 
-    def get_detector_data_file(self, detector_prefix, scan_step_index:int):
+    def get_detector_data_path(self):
+        return os.path.join(self.scan_path, self.scan_title)
+
+    def get_detector_data_file(self, detector_prefix, scan_step_index=None):
         scan_step = self.get_scan_step(scan_step_index)
         file_name = f'{self.scan_name}_{detector_prefix}_' \
                     f'{self.scan_number:03d}_{scan_step[0]:03d}.tiff'
@@ -748,11 +751,18 @@ class FMBGIWAXSScanParser(LinearScanParser, FMBScanParser):
                            f'file for detector {detector_prefix} scan step '
                            f'({scan_step_index})')
 
-    def get_detector_data(self, detector_prefix, scan_step_index:int):
-        detector_file = self.get_detector_data_file(
-            detector_prefix, scan_step_index)
-        with TiffFile(detector_file) as tiff_file:
-            detector_data = tiff_file.asarray()
+    def get_detector_data(self, detector_prefix, scan_step_index=None):
+        if scan_step_index is None:
+            detector_data = []
+            for index in range(self.spec_scan_npts):
+                detector_data.append(
+                    self.get_detector_data(detector_prefix, index))
+            detector_data = np.asarray(detector_data)
+        else:
+            detector_file = self.get_detector_data_file(
+                detector_prefix, scan_step_index)
+            with TiffFile(detector_file) as tiff_file:
+                detector_data = tiff_file.asarray()
         return detector_data
 
 
