@@ -3,17 +3,9 @@
 ## Using `pip`
 `chess-scanparser` is available over PyPI. Run
 ```bash
-pip install chess-scanparser
+pip install chess-scanparsers
 ```
 to install.
-<!---
-## Using `conda`
-CHAP is available over conda-forge. Run
-```bash
-conda install -c conda-forge chess-scanparser
-```
-to install.
--->
 
 ## From source
 1. Clone the source repository from github.
