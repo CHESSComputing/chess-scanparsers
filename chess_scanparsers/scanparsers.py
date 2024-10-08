@@ -1315,12 +1315,12 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
             if detector is None:
                 raise TypeError('Missing required detector parameter')
             if not isinstance(detector, str):
-                raise TypeError('Invalid detector parameter ({detector})')
+                raise TypeError(f'Invalid detector parameter ({detector})')
             return self.get_all_detector_data_spec(detector)
         if self.detector_data_format == 'h5':
             if (detector is not None
                     and not is_int_series(detector, ge=0, log=False)):
-                raise TypeError('Invalid detector parameter ({detector})')
+                raise TypeError(f'Invalid detector parameter ({detector})')
             return self.get_all_detector_data_h5(detector)
 
     def get_all_detector_data_spec(self, detector_prefix):
