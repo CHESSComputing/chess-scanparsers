@@ -702,7 +702,7 @@ class LinearScanParser(ScanParser):
         while i <= scan_step_index:
             scan_step = next(scan_steps)
             i += 1
-        return scan_step
+        return scan_step[::-1]
 
     def get_scan_step_index(self, scan_step:tuple):
         """Return the index of a single scan point corresponding to a
@@ -721,7 +721,7 @@ class LinearScanParser(ScanParser):
         scan_step_found = False
         scan_step_index = -1
         while not scan_step_found:
-            next_scan_step = next(scan_steps)
+            next_scan_step = next(scan_steps)[::-1]
             scan_step_index += 1
             if next_scan_step == scan_step:
                 scan_step_found = True
