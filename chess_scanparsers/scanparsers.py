@@ -774,6 +774,9 @@ class FMBSAXSWAXSScanParser(LinearScanParser, FMBScanParser):
     def get_scan_title(self):
         return f'{self.scan_name}_{self.scan_number:03d}'
 
+    def get_detector_data_path(self):
+        return os.path.join(self.scan_path, self.scan_title)
+
     def get_detector_data_file(self, detector_prefix, scan_step_index:int):
         detector_files = list_fmb_saxswaxs_detector_files(
             self.detector_data_path, detector_prefix)
@@ -786,7 +789,7 @@ class FMBSAXSWAXSScanParser(LinearScanParser, FMBScanParser):
                 filename, _ = os.path.splitext(f)
                 file_indices = tuple(
                     [int(i) for i in \
-                     filename.split('_')[-len(self.spec_scan_shape):]])
+                     filename.split('_')[-len(self.spec_scan_shape):][::-1]])
                 if file_indices == scan_step:
                     return os.path.join(self.detector_data_path, f)
             raise RuntimeError(
