@@ -771,27 +771,46 @@ class FMBSAXSWAXSScanParser(LinearScanParser, FMBScanParser):
     with the typical SAXS/WAXS setup at FMB.
     """
 
+    def __init__(self, spec_file, scan_number):
+        super().__init__(spec_file, scan_number)
+        self._start_timestamp = None
+
     def get_scan_title(self):
         return f'{self.scan_name}_{self.scan_number:03d}'
 
     def get_detector_data_path(self):
         return os.path.join(self.scan_path, self.scan_title)
 
+    @property
+    def start_timestamp(self):
+        if self._start_timestamp is None:
+            self._start_timestamp = self.get_start_timestamp()
+        return self._start_timestamp
+
+    def get_start_timestamp(self):
+        from datetime import datetime
+        date_string = self.spec_scan.date
+        date_format = '%a %b %d %H:%M:%S %Y'
+        return datetime.strptime(date_string, date_format).timestamp()
+
     def get_detector_data_file(self, detector_prefix, scan_step_index:int):
+        """This version compares the scan's start time plus the offset
+        in the spec data "Time" column and the timestamp of the
+        detector data files. Use this version only in special cases
+        where the detector image files may not be indexed properly,
+        like in loopscans collected before 2025."""
+        step_time_offset = self.spec_scan_data['Time'][scan_step_index]
         detector_files = list_fmb_saxswaxs_detector_files(
-            self.detector_data_path, detector_prefix)
-        if len(detector_files) == self.spec_scan_npts:
+                      self.detector_data_path, detector_prefix)
+        file_time_offsets = [os.path.getmtime(
+            os.path.join(self.detector_data_path, f)) - self.start_timestamp
+                      for f in detector_files]
+        file_index = np.searchsorted(
+            file_time_offsets, step_time_offset, side='right')
+        if file_index < len(detector_files):
             return os.path.join(
-                self.detector_data_path, detector_files[scan_step_index])
+                self.detector_data_path, detector_files[file_index])
         else:
-            scan_step = self.get_scan_step(scan_step_index)
-            for f in detector_files:
-                filename, _ = os.path.splitext(f)
-                file_indices = tuple(
-                    [int(i) for i in \
-                     filename.split('_')[-len(self.spec_scan_shape):][::-1]])
-                if file_indices == scan_step:
-                    return os.path.join(self.detector_data_path, f)
             raise RuntimeError(
                 'Could not find a matching detector data file for detector '
                 + f'{detector_prefix} at scan step index {scan_step_index}')
