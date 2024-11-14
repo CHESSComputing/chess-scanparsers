@@ -782,6 +782,9 @@ class FMBSAXSWAXSScanParser(LinearScanParser, FMBScanParser):
     def get_scan_title(self):
         return f'{self.scan_name}_{self.scan_number:03d}'
 
+    def get_detector_data_path(self):
+        return os.path.join(self.scan_path, self.scan_title)
+
     def get_detector_data_file(self, detector_prefix, scan_step_index:int):
         detector_files = list_fmb_saxswaxs_detector_files(
             self.detector_data_path, detector_prefix)
@@ -794,7 +797,7 @@ class FMBSAXSWAXSScanParser(LinearScanParser, FMBScanParser):
                 filename, _ = os.path.splitext(f)
                 file_indices = tuple(
                     [int(i) for i in \
-                     filename.split('_')[-len(self.spec_scan_shape):]])
+                     filename.split('_')[-len(self.spec_scan_shape):][::-1]])
                 if file_indices == scan_step:
                     return os.path.join(self.detector_data_path, f)
             raise RuntimeError(
@@ -815,13 +818,33 @@ class FMBXRFScanParser(LinearScanParser, FMBScanParser):
 
     def get_detector_data_file(self, detector_prefix, scan_step_index:int):
         scan_step = self.get_scan_step(scan_step_index)
-        file_name = f'scan{self.scan_number}_{scan_step[0]:03d}.hdf5'
+        file_name = f'scan{self.scan_number}_{scan_step[1]:03d}.hdf5'
         file_name_full = os.path.join(self.detector_data_path, file_name)
         if os.path.isfile(file_name_full):
             return file_name_full
         raise RuntimeError(f'{self.scan_title}: could not find detector image '
                            f'file for detector {detector_prefix} scan step '
                            f'({scan_step_index})')
+    def get_detector_data(self, detector_prefix, scan_step_index=None):
+        if scan_step_index is None:
+            from h5py import File
+            print(f'Warning: {self.__class__.__name__} assumes scan is 2d when'
+                  + ' getting all detector data')
+            detector_data = [None] * self.spec_scan_npts
+            for i in range(self.spec_scan_shape[-1]):
+                detector_data_file = os.path.join(
+                    self.detector_data_path,
+                    f'scan{self.scan_number}_{i:03d}.hdf5')
+                if os.path.isfile(detector_data_file):
+                    with File(detector_data_file) as det_file:
+                        row_data = det_file['/entry/data/data'][:]
+                    for ii, point_data in enumerate(row_data):
+                        point_index = ii + (i * self.spec_scan_shape[0])
+                        detector_data[point_index] = point_data
+                else:
+                    print(f'Warning: {detector_data_file} is not a file')
+            return np.array(detector_data)
+        return super().get_detector_data(detector_prefix, scan_step_index)
 
 # FIX Should be obsolete now
 #    def get_detector_data(self, detector_prefix, scan_step_index:int):
