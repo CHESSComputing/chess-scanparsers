@@ -419,9 +419,12 @@ class SMBScanParser(ScanParser):
             json_files = fnmatch_filter(
                 os.listdir(self.scan_path),
                 f'*.json')
+        if not json_files:
+            raise RuntimeError(f'{self.scan_title}: cannot find any '
+                               f'.json files in {self.scan_path}')
         if len(json_files) != 1:
-            raise RuntimeError(f'{self.scan_title}: cannot find the '
-                               '.json file to decode the .par file')
+            raise RuntimeError(f'{self.scan_title}: cannot find a unique '
+                               f'.json files in {self.scan_path}')
         with open(os.path.join(self.scan_path, json_files[0])) as json_file:
             par_file_cols = load(json_file)
         try:
@@ -436,9 +439,14 @@ class SMBScanParser(ScanParser):
             par_files = fnmatch_filter(
                 os.listdir(self.scan_path),
                 f'{self._par_file_pattern}.par')
+            if not par_files:
+                par_files = fnmatch_filter(os.listdir(self.scan_path), '*.par')
+            if not par_files:
+                raise RuntimeError(f'{self.scan_title}: cannot find any '
+                                   f'.par files in {self.scan_path}')
             if len(par_files) != 1:
-                raise RuntimeError(f'{self.scan_title}: cannot find the .par '
-                                   'file for this scan directory')
+                raise RuntimeError(f'{self.scan_title}: cannot find a unique '
+                                   f'.par file in {self.scan_path}')
             par_file = os.path.join(self.scan_path, par_files[0])
             self._par_file = par_file
         par_dict = None
@@ -1307,16 +1315,20 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
         :rtype: numpy.ndarray
         """
         # Local modules
-        from CHAP.utils.general import is_int_series
+        from CHAP.utils.general import (
+            is_int_series,
+            is_str_series,
+        )
 
         if self.detector_data_format == 'spec':
-            raise RuntimeError(
-                'SMBMCAScanParser.get_all_detector_data not updated/tested')
             if detector is None:
-                raise TypeError('Missing required detector parameter')
-            if not isinstance(detector, str):
+                detector = ['mca1']
+            elif not is_str_series(detector, log=False):
                 raise TypeError(f'Invalid detector parameter ({detector})')
-            return self.get_all_detector_data_spec(detector)
+            if len(detector) != 1:
+                raise ValueError(
+                    f'Multiple detectors not implemented ({detector})')
+            return self.get_all_detector_data_spec(detector[0])
         if self.detector_data_format == 'h5':
             if (detector is not None
                     and not is_int_series(detector, ge=0, log=False)):
@@ -1369,7 +1381,7 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
                 data.append(spectrum)
                 counter = 0
 
-        return np.array(data)
+        return np.expand_dims(data, 1)
 
     def get_all_detector_data_h5(self, detector_indices=None):
         """Return a 3D array of all MCA spectra collected by the
