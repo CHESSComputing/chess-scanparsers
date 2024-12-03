@@ -105,7 +105,8 @@ class ScanParser:
 
     def __init__(self,
                  spec_file_name:str,
-                 scan_number:int):
+                 scan_number:int,
+                 detector_data_path=None):
         """Constructor method"""
 
         self.spec_file_name = spec_file_name
@@ -123,7 +124,7 @@ class ScanParser:
         self._spec_scan_data = None
         self._spec_positioner_values = None
 
-        self._detector_data_path = None
+        self._detector_data_path = detector_data_path
 
 # FIXED moved to FMBRotationScanParser
 #        if (isinstance(self, FMBRotationScanParser) and scan_number > 1
@@ -386,8 +387,9 @@ class SMBScanParser(ScanParser):
     collected at SMB or FAST.
     """
 
-    def __init__(self, spec_file_name, scan_number):
-        super().__init__(spec_file_name, scan_number)
+    def __init__(self, spec_file_name, scan_number, detector_data_path=None):
+        super().__init__(spec_file_name, scan_number,
+                         detector_data_path=detector_data_path)
 
         self._pars = None
         self._par_file_pattern = f'*-*-{self.scan_name}'
@@ -507,8 +509,9 @@ class LinearScanParser(ScanParser):
     """Partial implementation of a class representing a typical line
     or mesh scan in SPEC.
     """
-    def __init__(self, spec_file_name, scan_number):
-        super().__init__(spec_file_name, scan_number)
+    def __init__(self, spec_file_name, scan_number, detector_data_path=None):
+        super().__init__(spec_file_name, scan_number,
+                         detector_data_path=detector_data_path)
 
         self._spec_scan_motor_mnes = None
         self._spec_scan_motor_vals = None
@@ -809,8 +812,10 @@ class FMBXRFScanParser(LinearScanParser, FMBScanParser):
     """Concrete implementation of a class representing a scan taken
     with the typical XRF setup at FMB.
     """
-    def __init__(self, spec_file, scan_number, load_data=True):
-        super().__init__(spec_file, scan_number)
+    def __init__(self, spec_file, scan_number,
+                 detector_data_path=None, load_data=True):
+        super().__init__(spec_file, scan_number,
+                         detector_data_path=detector_data_path)
         self._detector_data = None
         if load_data:
             self.load_detector_data()
@@ -903,8 +908,9 @@ class RotationScanParser(ScanParser):
     scan.
     """
 
-    def __init__(self, spec_file_name, scan_number):
-        super().__init__(spec_file_name, scan_number)
+    def __init__(self, spec_file_name, scan_number, detector_data_path=None):
+        super().__init__(spec_file_name, scan_number,
+                         detector_data_path=detector_data_path)
         self._starting_image_index = None
         self._starting_image_offset = None
 
@@ -944,8 +950,10 @@ class FMBRotationScanParser(RotationScanParser, FMBScanParser):
     with the typical tomography setup at FMB.
     """
     def __init__(
-            self, spec_file_name, scan_number, previous_scan=False):
-        super().__init__(spec_file_name, scan_number)
+            self, spec_file_name, scan_number,
+            previous_scan=False, detector_data_path=None):
+        super().__init__(spec_file_name, scan_number,
+                         detector_data_path=detector_data_path)
         self._previous_scan = previous_scan
         if scan_number > 1 and not self._previous_scan:
             scanparser = FMBRotationScanParser(
@@ -1078,9 +1086,11 @@ class SMBRotationScanParser(RotationScanParser, SMBScanParser):
     with the typical tomography setup at SMB.
     """
 
-    def __init__(self, spec_file_name, scan_number, par_file=None):
+    def __init__(self, spec_file_name, scan_number,
+                 par_file=None, detector_data_path=None):
         self._scan_type = None
-        super().__init__(spec_file_name, scan_number)
+        super().__init__(spec_file_name, scan_number,
+                         detector_data_path=detector_data_path)
 
         self._katefix = 0  # FIX remove when no longer needed
         self._par_file_pattern = f'id*-*tomo*-{self.scan_name}'
@@ -1187,9 +1197,10 @@ class MCAScanParser(ScanParser):
     while collecting SPEC MCA data.
     """
 
-    def __init__(self, spec_file_name, scan_number):
+    def __init__(self, spec_file_name, scan_number, detector_data_path=None):
         self._num_detector_bins = None
-        super().__init__(spec_file_name, scan_number)
+        super().__init__(spec_file_name, scan_number,
+                         detector_data_path=detector_data_path)
 
     @property
     def num_detector_bins(self):
@@ -1215,7 +1226,8 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
     """
     detector_data_formats = ('spec', 'h5')
 
-    def __init__(self, spec_file_name, scan_number, detector_data_format=None):
+    def __init__(self, spec_file_name, scan_number,
+                 detector_data_format=None, detector_data_path=None):
         """Constructor for SMBMCAScnaParser.
 
         :param spec_file: Path to scan's SPEC file
@@ -1226,7 +1238,8 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
             defaults to None
         :type detector_data_format: Optional[Literal["spec", "h5"]]
         """
-        super().__init__(spec_file_name, scan_number)
+        super().__init__(spec_file_name, scan_number,
+                         detector_data_path=detector_data_path)
 
         self.detector_data_format = None
         if detector_data_format is None:
@@ -1546,8 +1559,9 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
 
 class QM2ScanParser(LinearScanParser):
     """Parser for SPEC scans taken at QM2 (ID4B)"""
-    def __init__(self, spec_file_name, scan_number):
-        super().__init__(spec_file_name, scan_number)
+    def __init__(self, spec_file_name, scan_number, detector_data_path=None):
+        super().__init__(spec_file_name, scan_number,
+                         detector_data_path=detector_data_path)
 
         self._sample_id = None
         self._temperature = None
