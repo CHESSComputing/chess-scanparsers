@@ -1291,9 +1291,9 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
                 self._detector_data_path = os.path.join(
                     self.scan_path, str(self.scan_number), 'edd')
                 self.get_detector_data_files_h5()
-            except OSError:
+            except Exception as exc:
                 raise RuntimeError(f'{self.scan_title}: Unable to determine '
-                                   'detector data format')
+                                   f'detector data format -- {exc}')
             else:
                 self.detector_data_format = 'h5'
         else:
@@ -1459,7 +1459,12 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
         for detector_file in self.get_detector_data_files_h5():
             data = self.get_all_mca_data_h5(detector_file)
             if data.shape[0] != self.spec_scan_shape[0]:
-                raise RuntimeError(f'Incompatible data shape for {self}')
+                raise RuntimeError(
+                    f'Incompatible data shape for {self}.\n'
+                    + f'File: {detector_file}.\n'
+                    + f'Actual shape: {data.shape}.\n'
+                    + f'Expected first dimension: {self.spec_scan_shape[0]}.\n'
+                )
             if detector_indices is None:
                 detector_data.append(data)
             else:
