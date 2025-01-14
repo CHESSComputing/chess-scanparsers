@@ -323,7 +323,7 @@ class ScanParser:
         """
         raise NotImplementedError
 
-    def get_detector_data(self, detector_prefix, scan_step_index:int):
+    def get_detector_data(self, detector_prefix, scan_step_index:int=None):
         """Return the detector data collected at a certain step of
         this scan.
 
@@ -335,14 +335,20 @@ class ScanParser:
         :type scan_step_index: int
         :rtype: numpy.ndarray
         """
-        # Third party modules
         import fabio
 
-        image_file = self.get_detector_data_file(
-            detector_prefix, scan_step_index)
-        with fabio.open(image_file) as det_file:
-            image_data = det_file.data
-        return image_data
+        if scan_step_index is None:
+            detector_data = []
+            for index in range(self.spec_scan_npts):
+                detector_data.append(
+                    self.get_detector_data(detector_prefix, index))
+            detector_data = np.asarray(detector_data)
+        else:
+            image_file = self.get_detector_data_file(
+                detector_prefix, scan_step_index)
+            with fabio.open(image_file) as det_file:
+                detector_data = det_file.data
+        return detector_data
 
     def get_spec_positioner_value(self, positioner_name):
         """Return the value of a spec positioner recorded before this
