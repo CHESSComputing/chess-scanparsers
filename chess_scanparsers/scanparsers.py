@@ -1380,7 +1380,7 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
                     f'Unable to find detector file {filenames_full[-1]}')
         return filenames_full
 
-    def get_all_detector_data(self, detector=None):
+    def get_all_detector_data(self, detector=None, placeholder_data=False):
         """Return a 3D array of all MCA spectra collected by the
         detector elements during the scan.
 
@@ -1391,6 +1391,11 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
             for. Defaults to `None` (return data for all detector
             elements, invalid for SPEC format detector data).
         :type detector: Union[str, list[int]), optional
+        :param placeholder_data: If frames of data are missing and
+            placeholder_data is `False`, raise an error. Otherwise,
+            fill in the missing frames with the value of
+            `placeholder_data`. Defaults to `False`.
+        :type placeholder_data: object
         :returns: The MCA spectra
         :rtype: numpy.ndarray
         """
@@ -1408,23 +1413,35 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
             if len(detector) != 1:
                 raise ValueError(
                     f'Multiple detectors not implemented ({detector})')
-            return self.get_all_detector_data_spec(detector[0])
+            return self.get_all_detector_data_spec(
+                detector[0], placeholder_data=placeholder_data)
         if self.detector_data_format == 'h5':
             if (detector is not None
                     and not is_int_series(detector, ge=0, log=False)):
                 raise TypeError(f'Invalid detector parameter ({detector})')
-            return self.get_all_detector_data_h5(detector)
+            return self.get_all_detector_data_h5(
+                detector, placeholder_data=placeholder_data)
 
-    def get_all_detector_data_spec(self, detector_prefix):
+    def get_all_detector_data_spec(self, detector_prefix,
+                                   placeholder_data=False):
         """Return a 2D array of all MCA spectra collected by a
         detector in the spec MCA file format during the scan.
 
         :param detector_prefix: Detector name at is appears in the
             spec MCA file.
         :type detector_prefix: str
+        :param placeholder_data: If frames of data are missing and
+            placeholder_data is `False`, raise an error. Otherwise,
+            fill in the missing frames with the value of
+            `placeholder_data`. Defaults to `False`.  :type
+            placeholder_data: object
         :returns: 2D array of MCA spectra
         :rtype: numpy.ndarray
         """
+        if placeholder_data != False:
+            raise NotImplementedError(
+                'placeholder_data not implemented for scans that collected '
+                + 'MCA data in SPEC text files.')
         # This should be easy with pyspec, but there are bugs in
         # pyspec for MCA data.....  or is the 'bug' from a nonstandard
         # implementation of some macro on our end?  According to spec
@@ -1463,7 +1480,8 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
 
         return np.expand_dims(data, 1)
 
-    def get_all_detector_data_h5(self, detector_indices=None):
+    def get_all_detector_data_h5(self, detector_indices=None,
+                                 placeholder_data=False):
         """Return a 3D array of all MCA spectra collected by the
         detector elements during the scan in the h5 file format.
 
@@ -1471,6 +1489,12 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
             indices to return data for, default to `None` (return
             data for all detector elements).
         :type detector_indices: list[int], optional
+        :param placeholder_data: If frames of data are missing and
+            placeholder_data is `False`, raise an error. Otherwise,
+            fill in the missing frames with the value of
+            `placeholder_data`. Defaults to `False`.  :type
+            placeholder_data: object
+        :returns: 2D array of MCA spectra
         :returns: The MCA spectra
         :rtype: numpy.ndarray
         """
@@ -1478,12 +1502,25 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
         for detector_file in self.get_detector_data_files_h5():
             data = self.get_all_mca_data_h5(detector_file)
             if data.shape[0] != self.spec_scan_shape[0]:
-                raise RuntimeError(
-                    f'Incompatible data shape for {self}.\n'
-                    + f'File: {detector_file}.\n'
-                    + f'Actual shape: {data.shape}.\n'
-                    + f'Expected first dimension: {self.spec_scan_shape[0]}.\n'
-                )
+                msg = (f'Incompatible data shape for {self}.\n'
+                       + f'File: {detector_file}.\n'
+                       + f'Actual shape: {data.shape}.\n'
+                       + f'Expected first dimension: '
+                       + f'{self.spec_scan_shape[0]}.\n')
+            if data.shape[0] < self.spec_scan_shape[0]:
+                if placeholder_data is False:
+                    raise RuntimeError(msg)
+                else:
+                    print(msg)
+                    placeholder_data = np.full(
+                        (self.spec_scan_shape[0] - data.shape[0],
+                         *data.shape[1:]),
+                        placeholder_data,
+                        dtype=data.dtype
+                    )
+                    data = np.append(data, placeholder_data, axis=0)
+            elif data.shape[0] > self.spec_scan_shape[0]:
+                raise RuntimeError(msg)
             if detector_indices is None:
                 detector_data.append(data)
             else:
@@ -1539,7 +1576,8 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
 
         return data
 
-    def get_detector_data(self, detector=None, scan_step_index=None):
+    def get_detector_data(self, detector=None, scan_step_index=None,
+                          placeholder_data=False):
         """Return a single MCA spectrum for the detector indicated.
 
         :param detector: For detector data collected in SPEC format,
@@ -1552,10 +1590,16 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
         :param scan_step_index: Index of the scan step to return the
             spectrum from.
         :type scan_step_index: int
+        :param placeholder_data: If frames of data are missing and
+            placeholder_data is `False`, raise an error. Otherwise,
+            fill in the missing frames with the value of
+            `placeholder_data`. Defaults to `False`.
+        :type placeholder_data: object
         :returns: A single MCA spectrum
         :rtype: numpy.ndarray
         """
-        detector_data = self.get_all_detector_data(detector)
+        detector_data = self.get_all_detector_data(
+            detector, placeholder_data=placeholder_data)
         if scan_step_index is None:
             return detector_data
         # FIX scan_step_index needs testing
