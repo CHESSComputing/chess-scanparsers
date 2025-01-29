@@ -58,12 +58,12 @@ def list_fmb_saxswaxs_detector_files(detector_data_path, detector_prefix):
     performace for carrying our full FAMB SAXS/WAXS data-processing
     workflows.
 
-    :param detector_data_path: directory in which to look for detector
-        data files
+    :param detector_data_path: Directory in which to look for detector
+        data files.
     :type detector_data_path: str
-    :param detector_prefix: detector name to list files for
+    :param detector_prefix: Detector name to list files for.
     :type detector_prefix: str
-    :return: list of detector filenames
+    :return: List of detector filenames.
     :rtype: list[str]
     """
     return sorted(
@@ -77,12 +77,12 @@ def list_qm2_detector_files(detector_data_path, detector_prefix):
     """Return a sorted list of all data files for the given detector
     in the given directory.
 
-    :param detector_data_path: directory in which to look for detector
-        data files
+    :param detector_data_path: Directory in which to look for detector
+        data files.
     :type detector_data_path: str
-    :param detector_prefix: detector name to list files for
+    :param detector_prefix: Detector name to list files for.
     :type detector_prefix: str
-    :return: list of detector filenames
+    :return: List of detector filenames.
     :rtype: list[str]
     """
     return sorted(
@@ -96,18 +96,30 @@ class ScanParser:
     """Partial implementation of a class representing a SPEC scan and
     some of its metadata.
 
-    :param spec_file_name: path to a SPEC file on the CLASSE DAQ
+    :param spec_file_name: Path to a SPEC file on the CLASSE DAQ.
     :type spec_file_name: str
-    :param scan_number: the number of a scan in the SPEC file provided
-        with `spec_file_name`
+    :param scan_number: Number of a scan in the SPEC file provided
+        with `spec_file_name`.
     :type scan_number: int
     """
-
     def __init__(self,
                  spec_file_name:str,
                  scan_number:int,
                  detector_data_path=None):
-        """Constructor method"""
+        """Constructor method."""
+        # Local modules
+        from CHAP.utils.general import is_int
+
+        if not isinstance(spec_file_name, str):
+            raise ValueError(
+                f'Invalid parameter spec_file_name ({spec_file_name})')
+        if not is_int(scan_number, ge=0, log=False):
+            raise ValueError(
+                f'Invalid parameter scan_number ({scan_number})')
+        if (detector_data_path is not None
+                and not isinstance(detector_data_path, str)):
+            raise ValueError(
+                f'Invalid parameter detector_data_path ({detector_data_path})')
 
         self.spec_file_name = spec_file_name
         self.scan_number = scan_number
@@ -269,7 +281,7 @@ class ScanParser:
         return self.spec_command.split()[1:]
 
     def get_spec_scan_npts(self):
-        """Return the number of points collected in this SPEC scan
+        """Return the number of points collected in this SPEC scan.
 
         :rtype: int
         """
@@ -313,11 +325,10 @@ class ScanParser:
         """Return the name of the file containing detector data
         collected at a certain step of this scan.
 
-        :param detector_prefix: the prefix used in filenames for the
-            detector
+        :param detector_prefix: Prefix used in detector filenames.
         :type detector_prefix: str
-        :param scan_step_index: the index of the point in this scan
-            whose detector file name should be returned.
+        :param scan_step_index: Point index in this scan whose
+            detector file name should be returned.
         :type scan_step_index: int
         :rtype: str
         """
@@ -327,12 +338,11 @@ class ScanParser:
         """Return the detector data collected at a certain step of
         this scan.
 
-        :param detector_prefix: the prefix used in filenames for the
-            detector
+        :param detector_prefix: Prefix used in detector filenames.
         :type detector_prefix: str
-        :param scan_step_index: the index of the point in this scan
-            whose detector data should be returned.
-        :type scan_step_index: int
+        :param scan_step_index: Point index in this scan whose
+            detector file name should be returned.
+        :type scan_step_index: int, optional
         :rtype: numpy.ndarray
         """
         import fabio
@@ -354,11 +364,11 @@ class ScanParser:
         """Return the value of a spec positioner recorded before this
         scan began.
 
-        :param positioner_name: the name or mnemonic of a SPEC motor
-            whose position should be returned.
-        :raises KeyError: if `positioner_name` is not the name or
+        :param positioner_name: Name or mnemonic of a SPEC motor whose
+            position should be returned.
+        :raises KeyError: If `positioner_name` is not the name or
             mnemonic of a SPEC motor recorded for this scan.
-        :raises ValueError: if the recorded string value of the
+        :raises ValueError: If the recorded string value of the
             positioner in the SPEC file cannot be converted to a
             float.
         :rtype: float
@@ -380,7 +390,6 @@ class FMBScanParser(ScanParser):
     """Partial implementation of a class representing a SPEC scan
     collected at FMB.
     """
-
     def get_scan_name(self):
         return os.path.basename(self.spec_file.abspath)
 
@@ -392,7 +401,6 @@ class SMBScanParser(ScanParser):
     """Partial implementation of a class representing a SPEC scan
     collected at SMB or FAST.
     """
-
     def __init__(self, spec_file_name, scan_number, detector_data_path=None):
         super().__init__(spec_file_name, scan_number,
                          detector_data_path=detector_data_path)
@@ -406,6 +414,10 @@ class SMBScanParser(ScanParser):
         if self._pars is None:
             self._pars = self.get_pars()
         return self._pars
+
+    @property
+    def par_file(self):
+        return self._par_file
 
     def get_scan_name(self):
         return os.path.basename(self.scan_path)
@@ -487,7 +499,7 @@ class SMBScanParser(ScanParser):
         """Return the gain of a counter as recorded in the comments or
         user lines of a scan in a SPEC file converted to nA/V.
 
-        :param counter_name: the name of the counter
+        :param counter_name: Counter name.
         :type counter_name: str
         :rtype: str
         """
@@ -766,7 +778,7 @@ class FMBGIWAXSScanParser(LinearScanParser, FMBScanParser):
             return file_name_full
         raise RuntimeError(f'{self.scan_title}: could not find detector image '
                            f'file for detector {detector_prefix} scan step '
-                           f'({scan_step_index})')
+                           f'({scan_step_index}) ({file_name_full})')
 
     def get_detector_data(self, detector_prefix, scan_step_index=None):
         if scan_step_index is None:
@@ -787,7 +799,6 @@ class FMBSAXSWAXSScanParser(LinearScanParser, FMBScanParser):
     """Concrete implementation of a class representing a scan taken
     with the typical SAXS/WAXS setup at FMB.
     """
-
     def get_scan_title(self):
         return f'{self.scan_name}_{self.scan_number:03d}'
 
@@ -913,7 +924,6 @@ class RotationScanParser(ScanParser):
     """Partial implementation of a class representing a rotation
     scan.
     """
-
     def __init__(self, spec_file_name, scan_number, detector_data_path=None):
         super().__init__(spec_file_name, scan_number,
                          detector_data_path=detector_data_path)
@@ -1091,7 +1101,6 @@ class SMBRotationScanParser(RotationScanParser, SMBScanParser):
     """Concrete implementation of a class representing a scan taken
     with the typical tomography setup at SMB.
     """
-
     def __init__(self, spec_file_name, scan_number,
                  par_file=None, detector_data_path=None):
         self._scan_type = None
@@ -1202,7 +1211,6 @@ class MCAScanParser(ScanParser):
     """Partial implementation of a class representing a scan taken
     while collecting SPEC MCA data.
     """
-
     def __init__(self, spec_file_name, scan_number, detector_data_path=None):
         self._num_detector_bins = None
         super().__init__(spec_file_name, scan_number,
@@ -1218,8 +1226,8 @@ class MCAScanParser(ScanParser):
         """Return the number of bins for the detector with the given
         prefix.
 
-        :param detector_prefix: the detector prefix as used in SPEC
-            MCA data files
+        :param detector_prefix: Detector prefix as used in SPEC
+            MCA data files.
         :type detector_prefix: str
         :rtype: int
         """
@@ -1236,13 +1244,15 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
                  detector_data_format=None, detector_data_path=None):
         """Constructor for SMBMCAScnaParser.
 
-        :param spec_file: Path to scan's SPEC file
+        :param spec_file: Path to scan's SPEC file.
         :type spec_file: str
-        :param scan_number: Number of the SPEC scan
+        :param scan_number: SPEC scan number.
         :type scan_number: int
         :param detector_data_format: Format of the MCA data collected,
-            defaults to None
-        :type detector_data_format: Optional[Literal["spec", "h5"]]
+            defaults to None.
+        :type detector_data_format: Literal["spec", "h5"], optional
+        :param detector_data_path: Directory in which to look for
+            detector data files.
         """
         super().__init__(spec_file_name, scan_number,
                          detector_data_path=detector_data_path)
@@ -1395,8 +1405,8 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
             placeholder_data is `False`, raise an error. Otherwise,
             fill in the missing frames with the value of
             `placeholder_data`. Defaults to `False`.
-        :type placeholder_data: object
-        :returns: The MCA spectra and boolean array indicating whether
+        :type placeholder_data: object, optional
+        :returns: MCA spectra and boolean array indicating whether
             placeholder data may be present for those frames.
         :rtype: tuple[numpy.ndarray, numpy.ndarray]
         """
@@ -1434,8 +1444,8 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
         :param placeholder_data: If frames of data are missing and
             placeholder_data is `False`, raise an error. Otherwise,
             fill in the missing frames with the value of
-            `placeholder_data`. Defaults to `False`.  :type
-            placeholder_data: object
+            `placeholder_data`. Defaults to `False`.
+        :type placeholder_data: object, optional
         :returns: 2D array of MCA spectra and boolean array indicating
             whether placeholder data may be present for those frames.
         :rtype: tuple[numpy.ndarray, numpy.ndarray]
@@ -1443,7 +1453,7 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
         if placeholder_data != False:
             raise NotImplementedError(
                 'placeholder_data not implemented for scans that collected '
-                + 'MCA data in SPEC text files.')
+                'MCA data in SPEC text files.')
         # This should be easy with pyspec, but there are bugs in
         # pyspec for MCA data.....  or is the 'bug' from a nonstandard
         # implementation of some macro on our end?  According to spec
@@ -1494,10 +1504,10 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
         :param placeholder_data: If frames of data are missing and
             placeholder_data is `False`, raise an error. Otherwise,
             fill in the missing frames with the value of
-            `placeholder_data`. Defaults to `False`.  :type
-            placeholder_data: object
+            `placeholder_data`. Defaults to `False`.
+        :type placeholder_data: object, optional
         :returns: 2D array of MCA spectra
-        :returns: The MCA spectra and boolean array indicating whether
+        :returns: MCA spectra and boolean array indicating whether
             placeholder data may be present for those frames.
         :rtype: tuple[numpy.ndarray, numpy.ndarray]
         """
@@ -1509,10 +1519,10 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
             # row for this scan. Update placeholder_used accordingly.
             if data.shape[0] != self.spec_scan_shape[0]:
                 msg = (f'Incompatible data shape for {self}.\n'
-                       + f'File: {detector_file}.\n'
-                       + f'Actual shape: {data.shape}.\n'
-                       + f'Expected first dimension: '
-                       + f'{self.spec_scan_shape[0]}.\n')
+                       f'File: {detector_file}\n'
+                       f'Actual shape: {data.shape}\n'
+                       f'Expected first dimension: '
+                       f'{self.spec_scan_shape[0]}')
                 placeholder_used.extend([True] * self.spec_scan_shape[0])
             else:
                 placeholder_used.extend([False] * self.spec_scan_shape[0])
@@ -1522,13 +1532,14 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
                     raise RuntimeError(msg)
                 else:
                     print(msg)
-                    placeholder_data = np.full(
-                        (self.spec_scan_shape[0] - data.shape[0],
-                         *data.shape[1:]),
-                        placeholder_data,
-                        dtype=data.dtype
-                    )
-                    data = np.append(data, placeholder_data, axis=0)
+                    data = np.append(
+                        data,
+                        np.full(
+                            (self.spec_scan_shape[0] - data.shape[0],
+                             *data.shape[1:]),
+                            placeholder_data,
+                            dtype=data.dtype),
+                        axis=0)
             elif data.shape[0] > self.spec_scan_shape[0]:
                 raise RuntimeError(msg)
             # Collect all frames of data from this file
@@ -1600,12 +1611,12 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
         :type detector: Union[str, list[int]), optional
         :param scan_step_index: Index of the scan step to return the
             spectrum from.
-        :type scan_step_index: int
+        :type scan_step_index: int, optional
         :param placeholder_data: If frames of data are missing and
             placeholder_data is `False`, raise an error. Otherwise,
             fill in the missing frames with the value of
             `placeholder_data`. Defaults to `False`.
-        :type placeholder_data: object
+        :type placeholder_data: object, optional
         :returns: MCA spectrum from the scan step requested (or all
             MCA spectra), and boolean array indicating whether
             placeholder data may be present for those frames.
@@ -1622,7 +1633,7 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
 
 
 class QM2ScanParser(LinearScanParser):
-    """Parser for SPEC scans taken at QM2 (ID4B)"""
+    """Parser for SPEC scans taken at QM2 (ID4B)."""
     def __init__(self, spec_file_name, scan_number, detector_data_path=None):
         super().__init__(spec_file_name, scan_number,
                          detector_data_path=detector_data_path)
@@ -1667,7 +1678,7 @@ class QM2ScanParser(LinearScanParser):
         return self._sample_id
 
     def get_sample_id(self):
-        """Return the sample is used for this scan
+        """Return the sample is used for this scan.
 
         :rtype: str
         """
@@ -1692,7 +1703,7 @@ class QM2ScanParser(LinearScanParser):
         run that has the format "Temperature Setpoint at <x>." Parse
         and return the value of <x> from this line.
 
-        :raises RuntimeError: If no value for temperature can be found
+        :raises RuntimeError: If no value for temperature can be found.
         :rtype: float
         """
         from functools import cmp_to_key
