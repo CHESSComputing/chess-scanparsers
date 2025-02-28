@@ -785,7 +785,8 @@ class FMBGIWAXSScanParser(LinearScanParser, FMBScanParser):
             detector_data = []
             for index in range(self.spec_scan_npts):
                 detector_data.append(
-                    self.get_detector_data(detector_prefix, index))
+                    super().get_detector_data(detector_prefix, index))
+                    #self.get_detector_data(detector_prefix, index))
             detector_data = np.asarray(detector_data)
         else:
             detector_file = self.get_detector_data_file(
@@ -1280,7 +1281,7 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
         super().__init__(spec_file_name, scan_number,
                          detector_data_path=detector_data_path)
 
-        self.detector_data_format = None
+        self.detector_data_format = detector_data_format
         if detector_data_format is None:
             self.init_detector_data_format()
         else:
@@ -1513,7 +1514,7 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
                 data.append(spectrum)
                 counter = 0
 
-        return np.expand_dims(data, 1), np.full(length(data), False)
+        return np.expand_dims(data, 1), np.full(len(data), False)
 
     def get_all_detector_data_h5(self, detector_indices=None,
                                  placeholder_data=False):
