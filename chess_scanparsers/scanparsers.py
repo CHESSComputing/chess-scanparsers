@@ -824,6 +824,29 @@ class FMBSAXSWAXSScanParser(LinearScanParser, FMBScanParser):
                 'Could not find a matching detector data file for detector '
                 + f'{detector_prefix} at scan step index {scan_step_index}')
 
+    def get_detector_log_timestamps(self, detector_prefix):
+        from datetime import datetime
+        import glob
+        import re
+
+        log_files = sorted(
+            glob.glob(
+                os.path.join(
+                    self.detector_data_path, f'*{detector_prefix}*.log')))
+        timestamps = []
+        for log_file in log_files:
+            with open(log_file, 'r') as inf:
+                for line in inf:
+                    match = re.search(
+                        r'(\d{4}-[A-Za-z]{3}-\d{1,2}T\d{2}:\d{2}:\d{2}.\d{3})',
+                        line)
+                    if match:
+                        datetime_str = match.group(1)
+                        dt = datetime.strptime(
+                            datetime_str, '%Y-%b-%dT%H:%M:%S.%f')
+                        timestamps.append(dt.timestamp())
+        return timestamps
+
 
 class FMBXRFScanParser(LinearScanParser, FMBScanParser):
     """Concrete implementation of a class representing a scan taken
