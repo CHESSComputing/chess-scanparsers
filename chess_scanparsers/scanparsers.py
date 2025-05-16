@@ -589,6 +589,8 @@ class LinearScanParser(ScanParser):
                 m2_mne_i = 5
             m2_mne = self.spec_args[m2_mne_i]
             return (m1_mne, m2_mne)
+        if self.spec_macro in ('a2scan',):
+            return (self.spec_args[0], self.spec_args[3])
         if self.spec_macro in ('flyscan', 'ascan', 'flydscan', 'dscan'):
             return (self.spec_args[0],)
         if self.spec_macro in ('tseries', 'loopscan'):
@@ -638,6 +640,20 @@ class LinearScanParser(ScanParser):
                 slow_mot_vals -= self.get_spec_positioner_value(
                     self.spec_scan_motor_mnes[1])
             return (fast_mot_vals, slow_mot_vals)
+        if self.spec_macro in ('a2scan',):
+            m1_start = float(self.spec_args[1])
+            m1_end = float(self.spec_args[2])
+            m2_start = float(self.spec_args[4])
+            m2_end = float(self.spec_args[5])
+            npt = int(self.spec_args[6]) + 1
+            m1_vals = np.linspace(m1_start, m1_end, npt)
+            m2_vals = np.linspace(m2_start, m2_end, npt)
+            if relative:
+                m1_vals -= self.get_spec_positioner_value(
+                    self.spec_scan_motor_mnes[0])
+                m2_vals -= self.get_spec_positioner_value(
+                    self.spec_scan_motor_mnes[1])
+            return (v1_vals, m2_vals)
         if self.spec_macro in ('flyscan', 'ascan', 'flydscan', 'dscan'):
             mot_vals = np.linspace(float(self.spec_args[1]),
                                    float(self.spec_args[2]),
@@ -675,8 +691,9 @@ class LinearScanParser(ScanParser):
                 m2_nint_i = 8
             slow_mot_npts = int(self.spec_args[m2_nint_i]) + 1
             return (fast_mot_npts, slow_mot_npts)
-        if self.spec_macro in ('flyscan', 'ascan', 'flydscan', 'dscan'):
-            mot_npts = int(self.spec_args[-2])+1
+        if self.spec_macro in ('flyscan', 'ascan', 'flydscan', 'dscan',
+                               'a2scan'):
+            mot_npts = int(self.spec_args[-2]) + 1
             return (mot_npts,)
         if self.spec_macro in ('tseries', 'loopscan'):
             return (len(np.array(self.spec_scan.data[:,0])),)
@@ -697,7 +714,8 @@ class LinearScanParser(ScanParser):
                 # Accommodate pre-summer-2022 format
                 dwell = float(self.spec_args[8])
             return dwell
-        if self.spec_macro in ('flyscan', 'ascan', 'flydscan', 'dscan'):
+        if self.spec_macro in ('flyscan', 'ascan', 'flydscan', 'dscan',
+                               'a2scan'):
             return float(self.spec_args[-1])
         if self.spec_macro in ('tseries', 'loopscan'):
             return float(self.spec_args[1])
