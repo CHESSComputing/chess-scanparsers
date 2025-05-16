@@ -651,7 +651,7 @@ class LinearScanParser(ScanParser):
                     self.spec_scan_motor_mnes[0])
                 m2_vals -= self.get_spec_positioner_value(
                     self.spec_scan_motor_mnes[1])
-            return (v1_vals, m2_vals)
+            return (m1_vals, m2_vals)
         if self.spec_macro in ('flyscan', 'ascan', 'flydscan', 'dscan'):
             mot_vals = np.linspace(float(self.spec_args[1]),
                                    float(self.spec_args[2]),
