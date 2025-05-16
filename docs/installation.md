@@ -10,8 +10,8 @@ to install.
 ## From source
 1. Clone the source repository from github.
    ```bash
-   git clone https://github.com/CHESSComputing/chess-scanparser.git
-   cd chess-scanparser
+   git clone https://github.com/CHESSComputing/chess-scanparsers.git
+   cd chess-scanparsers
    ```
 1. Set a valid version number. In `setup.py`, replace:
    ```{literalinclude} /../setup.py
