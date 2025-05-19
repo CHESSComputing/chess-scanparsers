@@ -1685,8 +1685,6 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
             detector, placeholder_data=placeholder_data)
         if scan_step_index is None:
             return detector_data, placeholder_used
-        # FIX scan_step_index needs testing
-        raise RuntimeError('scan_step_index needs testing/updating')
         return (detector_data[scan_step_index],
                 placeholder_used[scan_step_index])
 
