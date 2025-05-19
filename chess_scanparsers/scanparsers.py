@@ -1480,6 +1480,8 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
             return self.get_all_detector_data_spec(
                 detector[0], placeholder_data=placeholder_data)
         if self.detector_data_format == 'h5':
+            if not isinstance(detector, list):
+                detector = [detector]
             if (detector is not None
                     and not is_int_series(detector, ge=0, log=False)):
                 raise TypeError(f'Invalid detector parameter ({detector})')
