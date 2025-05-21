@@ -1204,7 +1204,6 @@ class SMBRotationScanParser(RotationScanParser, SMBScanParser):
                 file_name_full = os.path.join(
                     self.detector_data_path, file_name)
                 if not os.path.isfile(file_name_full):
-                    print(f'\n\nfile_name_full: {file_name_full}\n\n')
                     self._katefix = min([
                         int(re.findall(r'\d+', f)[0])
                             for f in os.listdir(self.detector_data_path)
@@ -1499,15 +1498,16 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
             return self.get_all_detector_data_spec(
                 detector[0], placeholder_data=placeholder_data)
         if self.detector_data_format == 'h5':
-            if not isinstance(detector, list):
-                try:
-                    detector = int(detector)
-                except:
+            if detector is not None:
+                if not  isinstance(detector, list):
+                    try:
+                        detector = int(detector)
+                    except:
+                        raise TypeError(
+                            f'Invalid detector parameter ({detector})')
+                    detector = [detector]
+                if not is_int_series(detector, ge=0, log=False):
                     raise TypeError(f'Invalid detector parameter ({detector})')
-                detector = [detector]
-            if (detector is not None
-                    and not is_int_series(detector, ge=0, log=False)):
-                raise TypeError(f'Invalid detector parameter ({detector})')
             return self.get_all_detector_data_h5(
                 detector, placeholder_data=placeholder_data)
 
