@@ -343,6 +343,7 @@ class ScanParser:
         :type scan_step_index: int, optional
         :rtype: numpy.ndarray
         """
+        # Third party modules
         import fabio
 
         if scan_step_index is None:
@@ -842,9 +843,9 @@ class FMBSAXSWAXSScanParser(LinearScanParser, FMBScanParser):
                 + f'{detector_prefix} at scan step index {scan_step_index}')
 
     def get_detector_log_timestamps(self, detector_prefix):
+        # System modules
         from datetime import datetime
         import glob
-        import re
 
         log_files = sorted(
             glob.glob(
@@ -894,9 +895,11 @@ class FMBXRFScanParser(LinearScanParser, FMBScanParser):
                            f'file for detector {detector_prefix} scan step '
                            f'({scan_step_index})')
     def load_detector_data(self):
+        # Third party modules
         from h5py import File
-        print(f'Warning: {self.__class__.__name__} assumes scan is 2d when'
-              + ' getting all detector data')
+
+        print(f'Warning: {self.__class__.__name__} assumes scan is 2d when '
+              'getting all detector data')
         detector_data = [None] * self.spec_scan_npts
         for i in range(self.spec_scan_shape[-1]):
             detector_data_file = os.path.join(
@@ -927,9 +930,11 @@ class FMBXRFScanParser(LinearScanParser, FMBScanParser):
             return self._detector_data[scan_step_index, detector_index]
 
         if scan_step_index is None:
+            # Third party modules
             from h5py import File
+
             print(f'Warning: {self.__class__.__name__} assumes scan is 2d when'
-                  + ' getting all detector data')
+                  ' getting all detector data')
             detector_data = [None] * self.spec_scan_npts
             for i in range(self.spec_scan_shape[-1]):
                 detector_data_file = os.path.join(
@@ -1072,7 +1077,7 @@ class FMBRotationScanParser(RotationScanParser, FMBScanParser):
                            f'file for detector {detector_prefix}')
 
     def get_all_detector_data_in_file(
-            self, detector_prefix, scan_step_index=None):
+            self, detector_prefix, scan_step_index=None, dtype=None):
         # Third party modules
         from h5py import File
 
@@ -1092,20 +1097,25 @@ class FMBRotationScanParser(RotationScanParser, FMBScanParser):
             else:
                 raise ValueError('Invalid parameter scan_step_index '
                                  f'({scan_step_index})')
-        return detector_data
+        return np.asarray(detector_data, dtype=dtype)
 
-    def get_detector_data(self, detector_prefix, scan_step_index=None):
+    def get_detector_data(
+            self, detector_prefix, scan_step_index=None, dtype=None):
+        # Third party modules
+        import fabio
+
         try:
             # Detector files in h5 format
             detector_data = self.get_all_detector_data_in_file(
-                detector_prefix, scan_step_index)
+                detector_prefix, scan_step_index, dtype=dtype)
         except:
             # Detector files in tiff format
             if scan_step_index is None:
                 detector_data = []
                 for index in range(self.spec_scan_npts):
                     detector_data.append(
-                        self.get_detector_data(detector_prefix, index))
+                        self.get_detector_data(
+                            detector_prefix, index, dtype=dtype))
                 detector_data = np.asarray(detector_data)
             elif isinstance(scan_step_index, int):
                 image_file = self._get_detector_tiff_file(
@@ -1113,14 +1123,17 @@ class FMBRotationScanParser(RotationScanParser, FMBScanParser):
                 if image_file is None:
                     detector_data = None
                 else:
-                    with TiffFile(image_file) as tiff_file:
-                        detector_data = tiff_file.asarray()
+                    with fabio.open(image_file) as det_file:
+                        detector_data = np.asarray(det_file.data, dtype=dtype)
+#                    with TiffFile(image_file) as tiff_file:
+#                        detector_data = tiff_file.asarray()
             elif (isinstance(scan_step_index, (list, tuple))
                     and len(scan_step_index) == 2):
                 detector_data = []
                 for index in range(scan_step_index[0], scan_step_index[1]):
                     detector_data.append(
-                        self.get_detector_data(detector_prefix, index))
+                        self.get_detector_data(
+                            detector_prefix, index, dtype=dtype))
                 detector_data = np.asarray(detector_data)
             else:
                 raise ValueError('Invalid parameter scan_step_index '
@@ -1191,7 +1204,6 @@ class SMBRotationScanParser(RotationScanParser, SMBScanParser):
                 file_name_full = os.path.join(
                     self.detector_data_path, file_name)
                 if not os.path.isfile(file_name_full):
-                    print(f'\n\nfile_name_full: {file_name_full}\n\n')
                     self._katefix = min([
                         int(re.findall(r'\d+', f)[0])
                             for f in os.listdir(self.detector_data_path)
@@ -1235,23 +1247,29 @@ class SMBRotationScanParser(RotationScanParser, SMBScanParser):
                            f'file ({file_name_full}) for scan step '
                            f'({scan_step_index})')
 
-    def get_detector_data(self, detector_prefix, scan_step_index=None):
+    def get_detector_data(
+            self, detector_prefix, scan_step_index=None, dtype=None):
+        # Third party modules
+        import fabio
+
         if scan_step_index is None:
             detector_data = []
             for index in range(self.spec_scan_npts):
                 detector_data.append(
-                    self.get_detector_data(detector_prefix, index))
+                    self.get_detector_data(detector_prefix, index, dtype))
             detector_data = np.asarray(detector_data)
         elif isinstance(scan_step_index, int):
             image_file = self.get_detector_data_file(scan_step_index)
-            with TiffFile(image_file) as tiff_file:
-                detector_data = tiff_file.asarray()
+            with fabio.open(image_file) as det_file:
+                detector_data = np.asarray(det_file.data, dtype=dtype)
+#            with TiffFile(image_file) as tiff_file:
+#                detector_data = tiff_file.asarray()
         elif (isinstance(scan_step_index, (list, tuple))
                 and len(scan_step_index) == 2):
             detector_data = []
             for index in range(scan_step_index[0], scan_step_index[1]):
                 detector_data.append(
-                    self.get_detector_data(detector_prefix, index))
+                    self.get_detector_data(detector_prefix, index, dtype))
             detector_data = np.asarray(detector_data)
         else:
             raise ValueError('Invalid parameter scan_step_index '
@@ -1480,15 +1498,16 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
             return self.get_all_detector_data_spec(
                 detector[0], placeholder_data=placeholder_data)
         if self.detector_data_format == 'h5':
-            if not isinstance(detector, list):
-                try:
-                    detector = int(detector)
-                except:
+            if detector is not None:
+                if not  isinstance(detector, list):
+                    try:
+                        detector = int(detector)
+                    except:
+                        raise TypeError(
+                            f'Invalid detector parameter ({detector})')
+                    detector = [detector]
+                if not is_int_series(detector, ge=0, log=False):
                     raise TypeError(f'Invalid detector parameter ({detector})')
-                detector = [detector]
-            if (detector is not None
-                    and not is_int_series(detector, ge=0, log=False)):
-                raise TypeError(f'Invalid detector parameter ({detector})')
             return self.get_all_detector_data_h5(
                 detector, placeholder_data=placeholder_data)
 
@@ -1763,15 +1782,17 @@ class QM2ScanParser(LinearScanParser):
         :raises RuntimeError: If no value for temperature can be found.
         :rtype: float
         """
+        # System modules
         from functools import cmp_to_key
-        import re
 
         # Only bother parsing comments from scans taken BEFORE this one.
         def get_epoch(datetime_str):
             """Given an SPEC-style datetime string, return the
             epoch.
             """
+            # System modules
             from datetime import datetime
+
             return datetime.strptime(
                 datetime_str, '%a %b %d %H:%M:%S %Y').timestamp()
 
@@ -1882,15 +1903,17 @@ class QM2HDRMScanParser(LinearScanParser):
         :raises RuntimeError: If no value for temperature can be found.
         :rtype: float
         """
+        # System modules
         from functools import cmp_to_key
-        import re
 
         # Only bother parsing comments from scans taken BEFORE this one.
         def get_epoch(datetime_str):
             """Given an SPEC-style datetime string, return the
             epoch.
             """
+            # System modules
             from datetime import datetime
+
             return datetime.strptime(
                 datetime_str, '%a %b %d %H:%M:%S %Y').timestamp()
 
