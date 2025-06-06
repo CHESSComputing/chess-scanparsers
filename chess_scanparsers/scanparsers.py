@@ -774,6 +774,20 @@ class LinearScanParser(ScanParser):
                 break
         return scan_step_index
 
+    def is_snake(self):
+        """Return `True` if this scan takes a snake-like path, `False`
+        otherwise.
+        """
+        if len(self.spec_scan_shape) <= 1:
+            return False
+        fast_motor_label = list(self.spec_scan_data.keys())[0]
+        end_row0_i = self.spec_scan_shape[0] - 1
+        end_row0 = self.spec_scan_data[fast_motor_label][end_row0_i]
+        start_row1 = self.spec_scan_data[fast_motor_label][end_row0_i + 1]
+        if end_row0 == start_row1:
+            return True
+        return False
+
 
 class FMBGIWAXSScanParser(LinearScanParser, FMBScanParser):
     """Concrete implementation of a class representing a scan taken
