@@ -594,6 +594,8 @@ class LinearScanParser(ScanParser):
             return (self.spec_args[0],)
         if self.spec_macro in ('tseries', 'loopscan'):
             return ('Time',)
+        if self.spec_macro in ('flymesh3d'):
+            return (self.spec_args[0], self.spec_args[5], self.spec_args[9])
         raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
                            f'for scans of type {self.spec_macro}')
 
@@ -663,6 +665,31 @@ class LinearScanParser(ScanParser):
             return (mot_vals,)
         if self.spec_macro in ('tseries', 'loopscan'):
             return (self.spec_scan.data[:,0],)
+        if self.spec_macro in ('flymesh3d'):
+            m1_start = float(self.spec_args[1])
+            # Fast motor
+            m1_start = float(self.spec_args[1])
+            m1_end = float(self.spec_args[2])
+            m1_npt = int(self.spec_args[3]) + 1
+            fast_mot_vals = np.linspace(m1_start, m1_end, m1_npt)
+            # Medium motor
+            m2_start = float(self.spec_args[6])
+            m2_end = float(self.spec_args[7])
+            m2_npt = int(self.spec_args[8]) + 1
+            med_mot_vals = np.linspace(m2_start, m2_end, m2_npt)
+            # Slow motor
+            m3_start = float(self.spec_args[10])
+            m3_end = float(self.spec_args[11])
+            m3_npt = int(self.spec_args[12]) + 1
+            slow_mot_vals = np.linspace(m3_start, m3_end, m3_npt)
+            if relative:
+                fast_mot_vals -= self.get_spec_positioner_value(
+                    self.spec_scan_motor_mnes[0])
+                med_mot_vals -= self.get_spec_positioner_value(
+                    self.spec_scan_motor_mnes[1])
+                slow_mot_vals -= self.get_spec_positioner_value(
+                    self.spec_scan_motor_mnes[2])
+            return (fast_mot_vals, med_mot_vals, slow_mot_vals)
         raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
                            f'for scans of type {self.spec_macro}')
 
@@ -696,6 +723,11 @@ class LinearScanParser(ScanParser):
             return (mot_npts,)
         if self.spec_macro in ('tseries', 'loopscan'):
             return (len(np.array(self.spec_scan.data[:,0])),)
+        if self.spec_macro in ('flymesh3d'):
+            fast_mot_npts = int(self.spec_args[3]) + 1
+            med_mot_npts = int(self.spec_args[8]) + 1
+            slow_mot_npts = int(self.spec_args[12]) + 1
+            return (fast_mot_npts, med_mot_npts, slow_mot_npts)
         raise RuntimeError(f'{self.scan_title}: cannot determine scan shape '
                            f'for scans of type {self.spec_macro}')
 
@@ -720,6 +752,8 @@ class LinearScanParser(ScanParser):
             return float(self.spec_args[1])
         if self.spec_macro in ('wbslew_scan'):
             return float(self.spec_args[3])
+        if self.spec_macro in ('flymesh3d'):
+            return float(self.spec_args[4])
         raise RuntimeError(f'{self.scan_title}: cannot determine dwell for '
                            f'scans of type {self.spec_macro}')
 
