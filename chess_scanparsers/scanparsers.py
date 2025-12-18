@@ -719,7 +719,11 @@ class LinearScanParser(ScanParser):
             return (fast_mot_npts, slow_mot_npts)
         if self.spec_macro in ('flyscan', 'ascan', 'flydscan', 'dscan',
                                'a2scan'):
-            mot_npts = int(self.spec_args[-2]) + 1
+            if self.spec_macro == 'flyscan' and len(self.spec_args) == 2:
+                # Special case: motorless lfyscans
+                mot_npts = int(self.spec_args[0])
+            else:
+                mot_npts = int(self.spec_args[-2]) + 1
             return (mot_npts,)
         if self.spec_macro in ('tseries', 'loopscan'):
             return (len(np.array(self.spec_scan.data[:,0])),)
