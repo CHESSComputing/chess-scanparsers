@@ -490,8 +490,9 @@ class SMBScanParser(ScanParser):
                             par_dict[par_col_name] = par_value
 
         if par_dict is None:
-            raise RuntimeError(f'{self.scan_title}: could not find scan pars '
-                               f'for scan number {self.scan_number}')
+            raise RuntimeError(
+                f'{self.scan_title}: could not find scan pars for parfile '
+                f'{self._par_file}) and scan number {self.scan_number}')
         return par_dict
 
     def get_counter_gain(self, counter_name):
@@ -1303,7 +1304,28 @@ class SMBRotationScanParser(RotationScanParser, SMBScanParser):
             self, detector_prefix, scan_step_index=None, dtype=None):
         # Third party modules
         import fabio
+        from h5py import File
 
+        #RV FIX temp fix to read Amlan's andor2 h5 files
+        file_name = os.path.join(
+            self.detector_data_path,
+            f'spec.log_{detector_prefix.upper()}_{self.scan_number:03d}.h5')
+        if os.path.isfile(file_name):
+            with File(file_name) as h5_file:
+                if scan_step_index is None:
+                    detector_data = h5_file[
+                        '/entry/instrument/detector/data'][:]
+                elif isinstance(scan_step_index, int):
+                    detector_data = h5_file[
+                        '/entry/instrument/detector/data'][scan_step_index]
+                elif (isinstance(scan_step_index, (list, tuple))
+                        and len(scan_step_index) == 2):
+                    detector_data = h5_file['/entry/instrument/detector/data'][
+                        scan_step_index[0]:scan_step_index[1]]
+                else:
+                    raise ValueError('Invalid parameter scan_step_index '
+                                     f'({scan_step_index})')
+            return np.asarray(detector_data, dtype=dtype)
         if scan_step_index is None:
             detector_data = []
             for index in range(self.spec_scan_npts):
