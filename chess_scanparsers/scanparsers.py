@@ -850,14 +850,15 @@ class FMBGIWAXSScanParser(LinearScanParser, FMBScanParser):
                            f'file for detector {detector_prefix} scan step '
                            f'({scan_step_index}) ({file_name_full})')
 
-    def get_detector_data(self, detector_prefix, scan_step_index=None):
+    def get_detector_data(
+            self, detector_prefix, scan_step_index=None, dtype=None):
         if scan_step_index is None:
             detector_data = []
             for index in range(self.spec_scan_npts):
                 detector_data.append(
                     super().get_detector_data(detector_prefix, index))
                     #self.get_detector_data(detector_prefix, index))
-            detector_data = np.asarray(detector_data)
+            detector_data = np.asarray(detector_data, dtype=dtype)
         else:
             detector_file = self.get_detector_data_file(
                 detector_prefix, scan_step_index)
