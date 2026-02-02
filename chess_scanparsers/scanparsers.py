@@ -1098,12 +1098,12 @@ class FMBRotationScanParser(RotationScanParser, FMBScanParser):
             raise RuntimeError(f'{self.scan_title}: cannot obtain number of '
                                f'points from {self.spec_macro} with arguments '
                                f'{self.spec_args}')
-# FIX        if self.spec_macro == 'ascan':
-#            if len(self.spec_args) == 5:
-#                return int(self.spec_args[3])
-#            raise RuntimeError(f'{self.scan_title}: cannot obtain number of '
-#                               f'points from {self.spec_macro} with arguments '
-#                               f'{self.spec_args}')
+        if self.spec_macro == 'ascan':
+            if len(self.spec_args) == 5:
+                return 1+int(self.spec_args[3])
+            raise RuntimeError(f'{self.scan_title}: cannot obtain number of '
+                               f'points from {self.spec_macro} with arguments '
+                               f'{self.spec_args}')
         raise RuntimeError(f'{self.scan_title}: cannot determine rotation '
                            f' angles for scans of type {self.spec_macro}')
 
@@ -1115,6 +1115,8 @@ class FMBRotationScanParser(RotationScanParser, FMBScanParser):
             return int(self.spec_args[0]) - self.spec_scan_npts
         if self.spec_macro == 'flyscan':
             return 1
+        if self.spec_macro == 'ascan':
+            return 0
         raise RuntimeError(f'{self.scan_title}: cannot determine starting '
                            f'image offset for scans of type {self.spec_macro}')
 
