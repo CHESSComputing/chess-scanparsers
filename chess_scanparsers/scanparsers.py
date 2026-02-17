@@ -1114,7 +1114,8 @@ class FMBRotationScanParser(RotationScanParser, FMBScanParser):
         if hasattr(self, '_rams4_args'):
             return int(self.spec_args[0]) - self.spec_scan_npts
         if self.spec_macro == 'flyscan':
-            return 1
+            return 0
+            #return 1
         if self.spec_macro == 'ascan':
             return 0
         raise RuntimeError(f'{self.scan_title}: cannot determine starting '
@@ -1133,15 +1134,20 @@ class FMBRotationScanParser(RotationScanParser, FMBScanParser):
                            f'file for detector {detector_prefix}')
 
     def get_all_detector_data_in_file(
-            self, detector_prefix, scan_step_index=None, dtype=None):
+            self, detector_prefix, scan_step_index=None, detector_roi=None,
+            dtype=None):
         # Third party modules
         from h5py import File
 
         detector_file = self.get_detector_data_file(detector_prefix)
         with File(detector_file) as h5_file:
             if scan_step_index is None:
+                if detector_roi is None:
+                    detector_roi = [slice(None), slice(None)]
                 detector_data = h5_file['/entry/instrument/detector/data'][
-                    self.starting_image_offset:]
+                    slice(self.starting_image_offset, None),
+                    detector_roi[0],
+                    detector_roi[1]]
             elif isinstance(scan_step_index, int):
                 detector_data = h5_file['/entry/instrument/detector/data'][
                     self.starting_image_offset+scan_step_index]
@@ -1156,7 +1162,8 @@ class FMBRotationScanParser(RotationScanParser, FMBScanParser):
         return np.asarray(detector_data, dtype=dtype)
 
     def get_detector_data(
-            self, detector_prefix, scan_step_index=None, dtype=None):
+            self, detector_prefix, scan_step_index=None, detector_roi=None,
+            dtype=None):
         # Third party modules
         import fabio
 
@@ -1165,6 +1172,10 @@ class FMBRotationScanParser(RotationScanParser, FMBScanParser):
             detector_data = self.get_all_detector_data_in_file(
                 detector_prefix, scan_step_index, dtype=dtype)
         except:
+            if detector_roi is None:
+                detector_roi = [slice(None), slice(None)]
+            else:
+                raise NotImplementedError('detector_roi is not None')
             # Detector files in tiff format
             if scan_step_index is None:
                 detector_data = []
@@ -1304,7 +1315,8 @@ class SMBRotationScanParser(RotationScanParser, SMBScanParser):
                            f'({scan_step_index})')
 
     def get_detector_data(
-            self, detector_prefix, scan_step_index=None, dtype=None):
+            self, detector_prefix, scan_step_index=None, detector_roi=None,
+            dtype=None):
         # Third party modules
         import fabio
         from h5py import File
@@ -1333,7 +1345,9 @@ class SMBRotationScanParser(RotationScanParser, SMBScanParser):
             detector_data = []
             for index in range(self.spec_scan_npts):
                 detector_data.append(
-                    self.get_detector_data(detector_prefix, index, dtype))
+                    self.get_detector_data(
+                        detector_prefix, scan_step_index=index,
+                        detector_roi=detector_roi, dtype=dtype))
             detector_data = np.asarray(detector_data)
         elif isinstance(scan_step_index, int):
             image_file = self.get_detector_data_file(scan_step_index)
@@ -1346,7 +1360,9 @@ class SMBRotationScanParser(RotationScanParser, SMBScanParser):
             detector_data = []
             for index in range(scan_step_index[0], scan_step_index[1]):
                 detector_data.append(
-                    self.get_detector_data(detector_prefix, index, dtype))
+                    self.get_detector_data(
+                        detector_prefix, scan_step_index=index,
+                        detector_roi=detector_roi, dtype=dtype))
             detector_data = np.asarray(detector_data)
         else:
             raise ValueError('Invalid parameter scan_step_index '
