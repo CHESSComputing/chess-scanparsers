@@ -885,8 +885,12 @@ class FMBSAXSWAXSScanParser(LinearScanParser, FMBScanParser):
                 self.detector_data_path, detector_files[scan_step_index])
         else:
             scan_step = self.get_scan_step(scan_step_index)
+            if detector_prefix == 'EIG1':
+                # Fast-moving eiger indices start at 1, not 0.
+                scan_step = tuple([scan_step[0]+1, *scan_step[1:]])
             for f in detector_files:
                 filename, _ = os.path.splitext(f)
+                filename = filename.replace('_data_', '_')
                 file_indices = tuple(
                     [int(i) for i in \
                      filename.split('_')[-len(self.spec_scan_shape):][::-1]])
