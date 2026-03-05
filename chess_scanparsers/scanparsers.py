@@ -841,8 +841,13 @@ class FMBGIWAXSScanParser(LinearScanParser, FMBScanParser):
 
     def get_detector_data_file(self, detector_prefix, scan_step_index=None):
         scan_step = self.get_scan_step(scan_step_index)
-        file_name = f'{self.scan_name}_{detector_prefix}_' \
-                    f'{self.scan_number:03d}_{scan_step[0]:03d}.tiff'
+        if detector_prefix == 'EIG1':
+            file_name = f'{self.scan_name}_{detector_prefix}_' \
+                        f'{self.scan_number:03d}_data_' \
+                        f'{(1+scan_step[0]):06d}.h5'
+        else:
+            file_name = f'{self.scan_name}_{detector_prefix}_' \
+                        f'{self.scan_number:03d}_{scan_step[0]:03d}.tiff'
         file_name_full = os.path.join(self.detector_data_path, file_name)
         if os.path.isfile(file_name_full):
             return file_name_full
