@@ -821,10 +821,15 @@ class LinearScanParser(ScanParser):
             return False
         fast_motor_label = list(self.spec_scan_data.keys())[0]
         end_row0_i = self.spec_scan_shape[0] - 1
-        end_row0 = self.spec_scan_data[fast_motor_label][end_row0_i]
-        start_row1 = self.spec_scan_data[fast_motor_label][end_row0_i + 1]
-        if end_row0 == start_row1:
-            return True
+        try:
+            end_row0 = self.spec_scan_data[fast_motor_label][end_row0_i]
+            start_row1 = self.spec_scan_data[fast_motor_label][end_row0_i + 1]
+            if end_row0 == start_row1:
+                return True
+        except IndexError:
+            # If not enough scan points were present to determine
+            # path, assume it is NOT a snake scan.
+            return False
         return False
 
 
