@@ -389,11 +389,46 @@ class FMBScanParser(ScanParser):
     """Partial implementation of a class representing a SPEC scan
     collected at FMB.
     """
+    def __init__(self, spec_file_name, scan_number, detector_data_path=None):
+        super().__init__(
+            spec_file_name, scan_number, detector_data_path=detector_data_path
+        )
+
+        self.spec_positioner_units = None
+
     def get_scan_name(self):
         return os.path.basename(self.spec_file.abspath)
 
     def get_scan_title(self):
         return f'{self.scan_name}_{self.scan_number:03d}'
+
+    def get_spec_positioner_units(self, positioner_name):
+        """Return the configured units for a given SPEC
+        positioner. Uses the `#U UNITS<N>` userlines present in the
+        file header only at FMB."""
+        import re
+
+        if self.spec_positioner_units is None:
+            units = []
+            for u in self.spec_scan._fileheader._user_lines:
+                if re.match('UNITS\d+', u):
+                    _units = re.sub(r'UNITS\d+ ', '', u)
+                    _units = _units.split()
+                    units.extend(_units)
+            if len(units) != len(self.spec_scan.motors):
+                raise ValueError(
+                    f'There are {len(units)} units, '
+                    + f'but {len(self.spec_scan.motor_positions)} motors.'
+                )
+            spec_positioner_units = dict(zip(self.spec_scan.motors, units))
+            names = [p[0] for p in self.spec_scan.motor_positions]
+            mnemonics = self.spec_scan.motors
+            for (name, mne) in zip(names, mnemonics):
+                if name != mne:
+                    spec_positioner_units[name] = spec_positioner_units[mne]
+            self.spec_positioner_units = spec_positioner_units
+
+        return self.spec_positioner_units[positioner_name]
 
 
 class SMBScanParser(ScanParser):
