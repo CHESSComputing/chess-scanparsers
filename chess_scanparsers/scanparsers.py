@@ -1219,7 +1219,8 @@ class FMBRotationScanParser(RotationScanParser, FMBScanParser):
         try:
             # Detector files in h5 format
             detector_data = self.get_all_detector_data_in_file(
-                detector_prefix, scan_step_index, dtype=dtype)
+                detector_prefix, scan_step_index, detector_roi=detector_roi,
+                dtype=dtype)
         except:
             if detector_roi is None:
                 detector_roi = [slice(None), slice(None)]
