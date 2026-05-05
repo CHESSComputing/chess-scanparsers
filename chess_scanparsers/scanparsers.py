@@ -45,7 +45,11 @@ import re
 # Third party modules
 import numpy as np
 from pyspec.file.spec import FileSpec
-from pyspec.file.tiff import TiffFile
+try:
+    # Supported by certif-pyspec, but NOT chess-pyspec
+    from pyspec.file.tiff import TiffFile
+except:
+    pass
 
 @cache
 def filespec(spec_file_name):
