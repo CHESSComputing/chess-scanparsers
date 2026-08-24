@@ -16,15 +16,15 @@ def choose_scanparser(station, experiment):
     :param experiment: Type of X-ray measurement to which this scan
         belongs.
     :type experiment: Literal['edd', 'giwaxs', 'saxswaxs', 'powder', 'tomo',
-        'xrf', 'hdrm', 'n/a']
+        'xrd', 'xrf', 'hdrm', 'n/a']
     :returns: The most appropriate type of ScanParser to use.
     :rtype: type
     """
     station = station.lower()
     experiment = experiment.lower()
     if station in ('id1a3', 'id3a'):
-        if experiment in ('saxswaxs', 'powder'):
-            return SMBLinearScanParser
+        if experiment in ('saxswaxs', 'powder', 'xrd'):
+            return SMBXRDScanParser
         elif experiment == 'edd':
             return SMBMCAScanParser
         elif experiment == 'tomo':
@@ -34,7 +34,7 @@ def choose_scanparser(station, experiment):
     elif station == 'id3b':
         if experiment == 'giwaxs':
             return FMBGIWAXSScanParser
-        elif experiment in ('saxswaxs', 'powder'):
+        elif experiment in ('saxswaxs', 'powder', 'xrd'):
             return FMBSAXSWAXSScanParser
         elif experiment == 'tomo':
             return FMBRotationScanParser

@@ -1451,42 +1451,7 @@ class MCAScanParser(ScanParser):
         raise NotImplementedError
 
 
-class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
-    """Concrete implementation of a class representing a scan taken
-    with the typical EDD setup at SMB or FAST.
-    """
-    detector_data_formats = ('spec', 'h5')
-
-    def __init__(
-            self, spec_file_name, scan_number, detector_data_format=None,
-            detector_data_path=None):
-        """Constructor for SMBMCAScnaParser.
-
-        :param spec_file: Path to scan's SPEC file.
-        :type spec_file: str
-        :param scan_number: SPEC scan number.
-        :type scan_number: int
-        :param detector_data_format: Format of the MCA data collected,
-            defaults to None.
-        :type detector_data_format: Literal["spec", "h5"], optional
-        :param detector_data_path: Directory in which to look for
-            detector data files.
-        """
-        super().__init__(
-            spec_file_name, scan_number, detector_data_path=detector_data_path)
-
-        self.detector_data_format = detector_data_format
-        if detector_data_format is None:
-            self.init_detector_data_format()
-        else:
-            if detector_data_format.lower() in self.detector_data_formats:
-                self.detector_data_format = detector_data_format.lower()
-            else:
-                raise ValueError(
-                    'Unrecognized value for detector_data_format: '
-                    f'{detector_data_format}. Allowed values are: '
-                    ', '.join(self.detector_data_formats))
-
+class SMBMapscanScanParser(SMBScanParser):
     def get_spec_scan_motor_vals(self, relative=True):
         if not relative:
             # The scanned motor's recorded position in the spec.log
@@ -1528,6 +1493,43 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
             return (self.spec_scan.data[:,0],)
         raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
                            f'for scans of type {self.spec_macro}')
+
+
+class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBMapscanScanParser):
+    """Concrete implementation of a class representing a scan taken
+    with the typical EDD setup at SMB or FAST.
+    """
+    detector_data_formats = ('spec', 'h5')
+
+    def __init__(
+            self, spec_file_name, scan_number, detector_data_format=None,
+            detector_data_path=None):
+        """Constructor for SMBMCAScnaParser.
+
+        :param spec_file: Path to scan's SPEC file.
+        :type spec_file: str
+        :param scan_number: SPEC scan number.
+        :type scan_number: int
+        :param detector_data_format: Format of the MCA data collected,
+            defaults to None.
+        :type detector_data_format: Literal["spec", "h5"], optional
+        :param detector_data_path: Directory in which to look for
+            detector data files.
+        """
+        super().__init__(
+            spec_file_name, scan_number, detector_data_path=detector_data_path)
+
+        self.detector_data_format = detector_data_format
+        if detector_data_format is None:
+            self.init_detector_data_format()
+        else:
+            if detector_data_format.lower() in self.detector_data_formats:
+                self.detector_data_format = detector_data_format.lower()
+            else:
+                raise ValueError(
+                    'Unrecognized value for detector_data_format: '
+                    f'{detector_data_format}. Allowed values are: '
+                    ', '.join(self.detector_data_formats))
 
     def init_detector_data_format(self):
         """Determine and set a value for the instance variable
@@ -1859,6 +1861,120 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
             return detector_data, placeholder_used
         return (detector_data[scan_step_index],
                 placeholder_used[scan_step_index])
+
+
+class SMBXRDScanParser(SMBMapscanScanParser, LinearScanParser):
+    """Parser for SMB mapscans used for XRD experiments with the Eiger
+    detector.
+    """
+    def __init__(self, spec_file_name, scan_number, detector_data_path=None):
+        super().__init__(
+            spec_file_name, scan_number, detector_data_path=detector_data_path)
+        self.all_detector_data = None
+
+    def get_detector_data_path(self):
+        return os.path.join(
+            self.scan_path,
+            str(self.scan_number),
+            'eig'
+        )
+
+    def get_detector_data_files(self):
+        """Return the filenames (full absolute paths) to the files
+        containing h5-formatted MCA data for this scan.
+        """
+        filenames = sorted(
+            [f for f in os.listdir(self.detector_data_path)
+             if f.endswith('.h5')])
+        filenames_full = []
+        for filename in filenames:
+            filenames_full.append(
+                os.path.join(self.detector_data_path, filename))
+            if not os.path.isfile(filenames_full[-1]):
+                raise OSError(
+                    f'Unable to find detector file {filenames_full[-1]}')
+        return filenames_full
+
+    def get_detector_data(
+            self, detector=None, scan_step_index=None, placeholder_data=False):
+        """Return a single frame of Eiger detector data.
+
+        :param detector: Placeholder parameter, do not use.
+        :type detector: None
+        :param scan_step_index: Index of the scan step to return the
+            spectrum from.
+        :type scan_step_index: int, optional
+        :param placeholder_data: If frames of data are missing and
+            placeholder_data is `False`, raise an error. Otherwise,
+            fill in the missing frames with the value of
+            `placeholder_data`. Defaults to `False`.
+        :type placeholder_data: object, optional
+        :returns: Detector data from the scan step(s) requested, and
+            boolean array indicating whether placeholder data may be
+            present in the detector image(s).
+        :rtype: tuple[numpy.ndarray, numpy.ndarray]
+        """
+        detector_data, placeholder_used = self.get_all_detector_data(
+            placeholder_data=placeholder_data)
+        if scan_step_index is None:
+            return detector_data, placeholder_used
+        return (detector_data[scan_step_index],
+                placeholder_used[scan_step_index])
+
+    def get_all_detector_data(self, placeholder_data=False):
+        """Return a 3D array of all eiger detector images collected by
+        the during the scan.
+
+        :param placeholder_data: If frames of data are missing and
+            placeholder_data is `False`, raise an error. Otherwise,
+            fill in the missing frames with the value of
+            `placeholder_data`. Defaults to `False`.
+        :type placeholder_data: object, optional
+        :returns: Eiger images and corresponding boolean array
+            indicating whether placeholder data may be present for
+            those frames.
+        :rtype: tuple[numpy.ndarray, numpy.ndarray]
+        """
+        import fabio
+
+        detector_data = []
+        placeholder_used = []
+        for detector_file in self.get_detector_data_files():
+            with fabio.open(detector_file) as det_file:
+                data = det_file.data
+            # Check for unexpected dataset shape based on length of a
+            # row for this scan. Update placeholder_used accordingly.
+            if data.shape[0] != self.spec_scan_shape[0]:
+                msg = (f'Incompatible data shape for {self}.\n'
+                       f'File: {detector_file}\n'
+                       f'Actual shape: {data.shape}\n'
+                       f'Expected first dimension: '
+                       f'{self.spec_scan_shape[0]}')
+                placeholder_used.extend([True] * self.spec_scan_shape[0])
+            else:
+                placeholder_used.extend([False] * self.spec_scan_shape[0])
+            # Append placeholder data if needed
+            if data.shape[0] < self.spec_scan_shape[0]:
+                if placeholder_data is False:
+                    raise RuntimeError(msg)
+                else:
+                    print(msg)
+                    data = np.append(
+                        data,
+                        np.full(
+                            (self.spec_scan_shape[0] - data.shape[0],
+                             *data.shape[1:]),
+                            placeholder_data,
+                            dtype=data.dtype),
+                        axis=0)
+            elif data.shape[0] > self.spec_scan_shape[0]:
+                raise RuntimeError(msg)
+            detector_data.append(data)
+        if len(self.spec_scan_shape) == 1:
+            assert len(detector_data) == 1
+            return np.asarray(detector_data[0]), np.asarray(placeholder_used)
+        assert len(detector_data) == self.spec_scan_shape[1]
+        return np.vstack(tuple(detector_data)), np.asarray(placeholder_used)
 
 
 class QM2ScanParser(LinearScanParser):
