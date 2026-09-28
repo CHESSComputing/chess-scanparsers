@@ -37,6 +37,9 @@ setuptools.setup(
     ],
     python_requires='>=3.8',
     install_requires=[
-        'chess-pyspec'
+        'chess-pyspec',
+        'dectris-compression',
+        'h5py',
+        'scipy',
     ],
 )

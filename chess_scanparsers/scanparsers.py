@@ -1864,8 +1864,13 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBMapscanScanParser):
 
 
 class SMBXRDScanParser(SMBMapscanScanParser, LinearScanParser):
-    """Parser for SMB mapscans used for XRD experiments with the Eiger
-    detector.
+    """Parser for SMB mapscans used for XRD experiments with one or
+    more area detectors (e.g. the Eiger).
+
+    Each detector's files live in a folder below the scan's
+    `<scan_path>/<scan_number>` directory. The detector methods take
+    that folder, relative to `<scan_path>/<scan_number>`, as
+    `detector_path` and read every `.h5` file in it.
     """
     def __init__(self, spec_file_name, scan_number, detector_data_path=None):
         super().__init__(
@@ -1873,63 +1878,114 @@ class SMBXRDScanParser(SMBMapscanScanParser, LinearScanParser):
         self.all_detector_data = None
 
     def get_detector_data_path(self):
-        return os.path.join(
-            self.scan_path,
-            str(self.scan_number),
-            'eig'
-        )
+        return os.path.join(self.scan_path, str(self.scan_number))
 
-    def get_detector_data_files(self):
+    def get_detector_data_files(self, detector_path='eig', detector_prefix=''):
         """Return the filenames (full absolute paths) to the files
-        containing h5-formatted MCA data for this scan.
+        holding one detector's images for this scan, in scan order.
+
+        The detector's files are the `.h5` or TIFF files in its folder
+        whose names start with `detector_prefix`, so one folder may
+        hold several detectors' files. They are returned in sorted
+        order, which is scan order only if the frame numbers in their
+        names are zero-padded to a common width.
+
+        :param detector_path: Folder holding the detector's files,
+            relative to `<scan_path>/<scan_number>`, defaults to
+            `'eig'`.
+        :type detector_path: str, optional
+        :param detector_prefix: Prefix of the detector's file names,
+            matched literally (e.g. `'ff1_'`), defaults to `''` (every
+            file in the folder).
+        :type detector_prefix: str, optional
+        :raises OSError: If the folder does not exist, holds no
+            matching files, or holds both matching `.h5` and TIFF
+            files.
+        :raises RuntimeError: If there are several matching files and
+            the frame numbers in their names (the last run of digits)
+            are not zero-padded to a common width.
+        :rtype: list[str]
         """
-        filenames = sorted(
-            [f for f in os.listdir(self.detector_data_path)
-             if f.endswith('.h5')])
-        filenames_full = []
-        for filename in filenames:
-            filenames_full.append(
-                os.path.join(self.detector_data_path, filename))
-            if not os.path.isfile(filenames_full[-1]):
-                raise OSError(
-                    f'Unable to find detector file {filenames_full[-1]}')
-        return filenames_full
+        folder = os.path.join(self.detector_data_path, detector_path)
+        if not os.path.isdir(folder):
+            raise OSError(f'Unable to find detector folder {folder}')
+        filenames = [
+            f for f in os.listdir(folder)
+            if f.startswith(detector_prefix)
+            and os.path.isfile(os.path.join(folder, f))]
+        h5_files = sorted(f for f in filenames if f.endswith('.h5'))
+        tiff_files = sorted(
+            f for f in filenames if f.endswith(('.tif', '.tiff')))
+        if h5_files and tiff_files:
+            raise OSError(
+                f'Both .h5 and TIFF files match {detector_prefix}* in '
+                f'{folder}')
+        filenames = h5_files or tiff_files
+        if not filenames:
+            raise OSError(
+                f'No .h5 or TIFF files match {detector_prefix}* in {folder}')
+        if len(filenames) > 1:
+            numbers = [re.findall(r'\d+', os.path.splitext(f)[0])
+                       for f in filenames]
+            widths = {len(n[-1]) if n else 0 for n in numbers}
+            if len(widths) > 1 or 0 in widths:
+                raise RuntimeError(
+                    f'Frame numbers of the detector files in {folder} are '
+                    'not zero-padded to a common width, so their sorted '
+                    f'order may not be scan order: {filenames}')
+        return [os.path.join(folder, f) for f in filenames]
 
     def get_detector_data(
-            self, detector=None, scan_step_index=None, placeholder_data=False):
-        """Return a single frame of Eiger detector data.
+            self, detector_path='eig', scan_step_index=None,
+            placeholder_data=False, detector_prefix=''):
+        """Return a single frame of one detector's data.
 
-        :param detector: Placeholder parameter, do not use.
-        :type detector: None
+        :param detector_path: Folder holding the detector's files,
+            relative to `<scan_path>/<scan_number>`, defaults to
+            `'eig'`.
+        :type detector_path: str, optional
         :param scan_step_index: Index of the scan step to return the
-            spectrum from.
+            frame from, defaults to all steps.
         :type scan_step_index: int, optional
         :param placeholder_data: If frames of data are missing and
             placeholder_data is `False`, raise an error. Otherwise,
             fill in the missing frames with the value of
             `placeholder_data`. Defaults to `False`.
         :type placeholder_data: object, optional
+        :param detector_prefix: Prefix of the detector's file names,
+            defaults to `''` (every file in the folder).
+        :type detector_prefix: str, optional
         :returns: Detector data from the scan step(s) requested, and
             boolean array indicating whether placeholder data may be
             present in the detector image(s).
         :rtype: tuple[numpy.ndarray, numpy.ndarray]
         """
         detector_data, placeholder_used = self.get_all_detector_data(
-            placeholder_data=placeholder_data)
+            detector_path, placeholder_data=placeholder_data,
+            detector_prefix=detector_prefix)
         if scan_step_index is None:
             return detector_data, placeholder_used
         return (detector_data[scan_step_index],
                 placeholder_used[scan_step_index])
 
-    def get_all_detector_data(self, placeholder_data=False):
-        """Return a 3D array of all eiger detector images collected by
-        the during the scan.
+    def get_all_detector_data(
+            self, detector_path='eig', placeholder_data=False,
+            detector_prefix=''):
+        """Return a 3D array of all images one detector collected
+        during the scan.
 
+        :param detector_path: Folder holding the detector's files,
+            relative to `<scan_path>/<scan_number>`, defaults to
+            `'eig'`.
+        :type detector_path: str, optional
         :param placeholder_data: If frames of data are missing and
             placeholder_data is `False`, raise an error. Otherwise,
             fill in the missing frames with the value of
             `placeholder_data`. Defaults to `False`.
         :type placeholder_data: object, optional
+        :param detector_prefix: Prefix of the detector's file names,
+            defaults to `''` (every file in the folder).
+        :type detector_prefix: str, optional
         :returns: Eiger images and corresponding boolean array
             indicating whether placeholder data may be present for
             those frames.
@@ -1939,7 +1995,8 @@ class SMBXRDScanParser(SMBMapscanScanParser, LinearScanParser):
 
         detector_data = []
         placeholder_used = []
-        for detector_file in self.get_detector_data_files():
+        for detector_file in self.get_detector_data_files(
+                detector_path, detector_prefix):
             with fabio.open(detector_file) as det_file:
                 data = det_file.data
             # Check for unexpected dataset shape based on length of a
