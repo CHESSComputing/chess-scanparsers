@@ -197,7 +197,7 @@ class EigerStreamV1File(_EigerStreamFile):
 
     @property
     def shape(self):
-        return tuple(self._h5file['data/0/shape'][()])
+        return tuple(int(n) for n in self._h5file['data/0/shape'][()])
 
 
 class EigerStreamV2File(_EigerStreamFile):
@@ -246,4 +246,5 @@ class EigerStreamV2File(_EigerStreamFile):
 
     @property
     def shape(self):
-        return tuple(self._h5file['data/0/threshold_1/shape'][()])
+        shape = self._h5file['data/0/threshold_1/shape'][()]
+        return tuple(int(n) for n in shape)

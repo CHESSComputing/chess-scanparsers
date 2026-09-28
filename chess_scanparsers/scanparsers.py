@@ -1868,9 +1868,13 @@ class SMBXRDScanParser(SMBMapscanScanParser, LinearScanParser):
     more area detectors (e.g. the Eiger).
 
     Each detector's files live in a folder below the scan's
-    `<scan_path>/<scan_number>` directory. The detector methods take
-    that folder, relative to `<scan_path>/<scan_number>`, as
-    `detector_path` and read every `.h5` file in it.
+    `<scan_path>/<scan_number>` directory, passed to the detector
+    methods as `detector_path`. A detector's files are the `.h5` or
+    TIFF files in that folder whose names start with
+    `detector_prefix`; each must hold one row of the scan's frames.
+    They are read with `fabio`, or with
+    :mod:`chess_scanparsers.eiger_stream` for Eiger stream files
+    (`detector_format`).
     """
     def __init__(self, spec_file_name, scan_number, detector_data_path=None):
         super().__init__(
@@ -1937,7 +1941,8 @@ class SMBXRDScanParser(SMBMapscanScanParser, LinearScanParser):
 
     def get_detector_data(
             self, detector_path='eig', scan_step_index=None,
-            placeholder_data=False, detector_prefix=''):
+            placeholder_data=False, detector_prefix='', detector_format=None,
+            reader_kwargs=None):
         """Return a single frame of one detector's data.
 
         :param detector_path: Folder holding the detector's files,
@@ -1955,6 +1960,12 @@ class SMBXRDScanParser(SMBMapscanScanParser, LinearScanParser):
         :param detector_prefix: Prefix of the detector's file names,
             defaults to `''` (every file in the folder).
         :type detector_prefix: str, optional
+        :param detector_format: Format of the detector's files, see
+            :meth:`get_all_detector_data`, defaults to `None` (read
+            with `fabio`).
+        :type detector_format: str, optional
+        :param reader_kwargs: Keyword arguments for the file reader.
+        :type reader_kwargs: dict, optional
         :returns: Detector data from the scan step(s) requested, and
             boolean array indicating whether placeholder data may be
             present in the detector image(s).
@@ -1962,7 +1973,8 @@ class SMBXRDScanParser(SMBMapscanScanParser, LinearScanParser):
         """
         detector_data, placeholder_used = self.get_all_detector_data(
             detector_path, placeholder_data=placeholder_data,
-            detector_prefix=detector_prefix)
+            detector_prefix=detector_prefix, detector_format=detector_format,
+            reader_kwargs=reader_kwargs)
         if scan_step_index is None:
             return detector_data, placeholder_used
         return (detector_data[scan_step_index],
@@ -1970,7 +1982,7 @@ class SMBXRDScanParser(SMBMapscanScanParser, LinearScanParser):
 
     def get_all_detector_data(
             self, detector_path='eig', placeholder_data=False,
-            detector_prefix=''):
+            detector_prefix='', detector_format=None, reader_kwargs=None):
         """Return a 3D array of all images one detector collected
         during the scan.
 
@@ -1986,19 +1998,26 @@ class SMBXRDScanParser(SMBMapscanScanParser, LinearScanParser):
         :param detector_prefix: Prefix of the detector's file names,
             defaults to `''` (every file in the folder).
         :type detector_prefix: str, optional
-        :returns: Eiger images and corresponding boolean array
-            indicating whether placeholder data may be present for
-            those frames.
+        :param detector_format: Format of the detector's files:
+            `'eiger-stream-v1'` or `'eiger-stream-v2'` (read with
+            :mod:`chess_scanparsers.eiger_stream`), or `None` to read
+            them with `fabio`, defaults to `None`.
+        :type detector_format: str, optional
+        :param reader_kwargs: Keyword arguments for the file reader,
+            e.g. `{'threshold_setting': 'man_diff', 'multiplier':
+            1.9111}` for `'eiger-stream-v2'`.
+        :type reader_kwargs: dict, optional
+        :returns: The detector's images and corresponding boolean
+            array indicating whether placeholder data may be present
+            for those frames.
         :rtype: tuple[numpy.ndarray, numpy.ndarray]
         """
-        import fabio
-
         detector_data = []
         placeholder_used = []
         for detector_file in self.get_detector_data_files(
                 detector_path, detector_prefix):
-            with fabio.open(detector_file) as det_file:
-                data = det_file.data
+            data = self._read_detector_file(
+                detector_file, detector_format, reader_kwargs)
             # Check for unexpected dataset shape based on length of a
             # row for this scan. Update placeholder_used accordingly.
             if data.shape[0] != self.spec_scan_shape[0]:
@@ -2032,6 +2051,49 @@ class SMBXRDScanParser(SMBMapscanScanParser, LinearScanParser):
             return np.asarray(detector_data[0]), np.asarray(placeholder_used)
         assert len(detector_data) == self.spec_scan_shape[1]
         return np.vstack(tuple(detector_data)), np.asarray(placeholder_used)
+
+    @staticmethod
+    def _read_detector_file(filename, detector_format=None, reader_kwargs=None):
+        """Return the frames in one detector file, along axis 0.
+
+        :param filename: Name of the detector file.
+        :type filename: str
+        :param detector_format: Format of the file, see
+            :meth:`get_all_detector_data`, defaults to `None` (read
+            with `fabio`).
+        :type detector_format: str, optional
+        :param reader_kwargs: Keyword arguments for the file reader.
+        :type reader_kwargs: dict, optional
+        :raises ValueError: If the format is not supported.
+        :rtype: numpy.ndarray
+        """
+        if detector_format is None:
+            # Third party modules
+            import fabio
+
+            with fabio.open(filename) as det_file:
+                return det_file.data
+
+        # Local modules
+        from .eiger_stream import (
+            EigerStreamV1File,
+            EigerStreamV2File,
+        )
+
+        readers = {
+            'eiger-stream-v1': EigerStreamV1File,
+            'eiger-stream-v2': EigerStreamV2File,
+        }
+        if detector_format not in readers:
+            raise ValueError(
+                f'Unsupported detector_format "{detector_format}", allowed '
+                f'values are: None, {", ".join(readers)}')
+        with readers[detector_format](
+                filename, **(reader_kwargs or {})) as frames:
+            data = np.empty((len(frames), *frames.shape), dtype=frames.dtype)
+            for i in range(len(frames)):
+                data[i] = frames[i]
+        return data
 
 
 class QM2ScanParser(LinearScanParser):
