@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 #
-# Derived from hexrd (https://github.com/HEXRD/hexrd), distributed under
-# the license below. See also hexrd's NOTICE file:
+# The Eiger stream readers in this module, from `_read_string` to
+# `EigerStreamV2File`, are derived from hexrd
+# (https://github.com/HEXRD/hexrd) and distributed under the license
+# below. See also hexrd's NOTICE file:
 # https://github.com/HEXRD/hexrd/blob/master/NOTICE
 #
 # BSD 3-Clause License
@@ -34,10 +36,15 @@
 # CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 # OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-"""Readers for the HDF5 files written by the Eiger stream receiver,
-versions 1 and 2.
+"""Frame-by-frame access to area detector files, by file format.
 
-Stripped down from hexrd 0.10.2 (https://github.com/HEXRD/hexrd):
+:func:`open_detector_file` returns the frames of one file as a
+sequence: `len()` gives the number of frames without reading any
+pixels, and indexing reads only the frame asked for.
+
+The readers for HDF5 files written by the Eiger stream receiver,
+versions 1 and 2, are stripped down from hexrd 0.10.2
+(https://github.com/HEXRD/hexrd):
 `hexrd/core/imageseries/load/eiger_stream_v1.py`,
 `hexrd/core/imageseries/load/eiger_stream_v2.py`,
 `hexrd/core/imageseries/load/eiger.py` (`decompress_frame`) and
@@ -52,6 +59,115 @@ from io import BytesIO
 import h5py
 import numpy as np
 
+DEFAULT_DEXELA_DATA_PATH = 'imageseries/images'
+DETECTOR_FORMATS = (
+    None, 'eiger-stream-v1', 'eiger-stream-v2', 'hdf5', 'dexela')
+
+
+class _Frames:
+    """Base class for a read-only sequence of the frames in one
+    detector file, usable as a context manager. Subclasses set
+    `filename` and define `close`, `__len__` and `_get_frame`.
+    """
+
+    def close(self):
+        """Close the file."""
+        raise NotImplementedError
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def __len__(self):
+        raise NotImplementedError
+
+    def __getitem__(self, key):
+        """Return frame `key`, or with `key = (index, *rest)` that
+        frame indexed by `rest`."""
+        if isinstance(key, tuple):
+            return self[key[0]][key[1:]]
+        if not 0 <= key < len(self):
+            raise IndexError(
+                f'Frame {key} out of range for {self.filename}, which '
+                f'holds {len(self)} frames')
+        return self._get_frame(key)
+
+    def __iter__(self):
+        for index in range(len(self)):
+            yield self[index]
+
+    def _get_frame(self, index):
+        raise NotImplementedError
+
+
+class HDF5Frames(_Frames):
+    """Frames of one dataset in a plain HDF5 file: a 3D dataset holds
+    its frames along axis 0, a 2D dataset is a single frame.
+    """
+    def __init__(self, filename, data_path):
+        """
+        :param filename: Name of the HDF5 file.
+        :type filename: str
+        :param data_path: Path of the dataset in the file.
+        :type data_path: str
+        :raises ValueError: If the dataset is not 2D or 3D.
+        """
+        self.filename = filename
+        self.data_path = data_path
+        self._h5file = h5py.File(filename, 'r')
+        try:
+            self._dataset = self._h5file[data_path]
+            if self._dataset.ndim not in (2, 3):
+                raise ValueError(
+                    f'Dataset {data_path} in {filename} is '
+                    f'{self._dataset.ndim}D, expected 2D or 3D')
+        except Exception:
+            self._h5file.close()
+            raise
+
+    def close(self):
+        self._h5file.close()
+
+    def __len__(self):
+        if self._dataset.ndim == 2:
+            return 1
+        return self._dataset.shape[0]
+
+    def _get_frame(self, index):
+        if self._dataset.ndim == 2:
+            return self._dataset[()]
+        return self._dataset[index]
+
+
+class FabioFrames(_Frames):
+    """Frames of an image file that `fabio` reads, e.g. a TIFF."""
+    def __init__(self, filename):
+        """
+        :param filename: Name of the image file.
+        :type filename: str
+        """
+        # Third party modules
+        import fabio
+
+        self.filename = filename
+        self._image = fabio.open(filename)
+
+    def close(self):
+        self._image.close()
+
+    def __len__(self):
+        return self._image.nframes
+
+    def _get_frame(self, index):
+        if index == 0:
+            return self._image.data
+        return self._image.getframe(index).data
+
+
+# Eiger stream readers, derived from hexrd (see the license at the top
+# of this module)
 
 def _read_string(dataset):
     """Return the value of a string dataset as a `str`."""
@@ -128,7 +244,7 @@ def decompress_frame(d):
     raise ValueError(f'Unsupported compression type: {compression_type}')
 
 
-class _EigerStreamFile:
+class _EigerStreamFile(_Frames):
     """Read-only sequence of the frames in an Eiger stream HDF5 file.
     A frame is read and decompressed when it is accessed.
     """
@@ -139,19 +255,17 @@ class _EigerStreamFile:
         """
         self.filename = filename
         self._h5file = h5py.File(filename, 'r')
-        self.metadata = unwrap_h5_to_dict(self._h5file['/metadata'])
+        try:
+            self.metadata = unwrap_h5_to_dict(self._h5file['/metadata'])
+        except Exception:
+            self._h5file.close()
+            raise
 
     def close(self):
         """Close the HDF5 file."""
         if self._h5file is not None:
             self._h5file.close()
             self._h5file = None
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *exc):
-        self.close()
 
     def __getstate__(self):
         # An open h5py file cannot be pickled: reopen it on unpickling
@@ -165,17 +279,6 @@ class _EigerStreamFile:
 
     def __len__(self):
         return len(self._h5file['data'])
-
-    def __getitem__(self, key):
-        """Return frame `key`, or with `key = (index, *rest)` that
-        frame indexed by `rest`."""
-        if isinstance(key, tuple):
-            return self._get_frame(key[0])[key[1:]]
-        return self._get_frame(key)
-
-    def __iter__(self):
-        for index in range(len(self)):
-            yield self[index]
 
     def _load_frame(self, entry_path):
         """Return the frame stored in the entry at `entry_path` below
@@ -248,3 +351,57 @@ class EigerStreamV2File(_EigerStreamFile):
     def shape(self):
         shape = self._h5file['data/0/threshold_1/shape'][()]
         return tuple(int(n) for n in shape)
+
+
+def open_detector_file(filename, detector_format=None, reader_kwargs=None):
+    """Return the frames of one detector file as a sequence that reads
+    a frame only when it is indexed. Use it as a context manager, or
+    call its `close` method.
+
+    :param filename: Name of the detector file.
+    :type filename: str
+    :param detector_format: Format of the file: `'eiger-stream-v1'`
+        or `'eiger-stream-v2'` (:class:`EigerStreamV1File`,
+        :class:`EigerStreamV2File`), `'hdf5'` (one dataset of frames,
+        :class:`HDF5Frames`; needs `data_path` in `reader_kwargs`),
+        `'dexela'` (`'hdf5'` with `data_path` defaulting to
+        `'imageseries/images'`), or `None` to read it with `fabio`
+        (:class:`FabioFrames`), defaults to `None`.
+    :type detector_format: str, optional
+    :param reader_kwargs: Keyword arguments for the reader, e.g.
+        `{'threshold_setting': 'man_diff', 'multiplier': 1.9111}` for
+        `'eiger-stream-v2'`, or `{'data_path': 'imageseries/images'}`
+        for `'hdf5'`.
+    :type reader_kwargs: dict, optional
+    :raises ValueError: If the format is not supported, or the
+        `reader_kwargs` do not fit it.
+    :return: The frames of the file, supporting `len()` and indexing
+        by frame number.
+    """
+    kwargs = dict(reader_kwargs or {})
+    if detector_format is None:
+        if kwargs:
+            raise ValueError(
+                'detector_format None (fabio) takes no reader_kwargs, got: '
+                f'{", ".join(kwargs)}')
+        return FabioFrames(filename)
+    if detector_format in ('hdf5', 'dexela'):
+        if detector_format == 'dexela':
+            kwargs.setdefault('data_path', DEFAULT_DEXELA_DATA_PATH)
+        data_path = kwargs.pop('data_path', None)
+        if data_path is None:
+            raise ValueError(
+                f'detector_format "{detector_format}" needs the path of the '
+                "dataset in the file in reader_kwargs['data_path']")
+        if kwargs:
+            raise ValueError(
+                f'Unsupported reader_kwargs for detector_format '
+                f'"{detector_format}": {", ".join(kwargs)}')
+        return HDF5Frames(filename, data_path)
+    if detector_format == 'eiger-stream-v1':
+        return EigerStreamV1File(filename, **kwargs)
+    if detector_format == 'eiger-stream-v2':
+        return EigerStreamV2File(filename, **kwargs)
+    raise ValueError(
+        f'Unsupported detector_format "{detector_format}", allowed values '
+        f'are: {", ".join(str(f) for f in DETECTOR_FORMATS)}')

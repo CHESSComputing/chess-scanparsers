@@ -1872,14 +1872,16 @@ class SMBXRDScanParser(SMBMapscanScanParser, LinearScanParser):
     methods as `detector_path`. A detector's files are the `.h5` or
     TIFF files in that folder whose names start with
     `detector_prefix`; each must hold one row of the scan's frames.
-    They are read with `fabio`, or with
-    :mod:`chess_scanparsers.eiger_stream` for Eiger stream files
-    (`detector_format`).
+    `detector_format` picks how they are read: with `fabio`, with
+    :mod:`chess_scanparsers.chess_detectors` for Eiger stream files, or
+    with `h5py` for plain HDF5 files such as the Dexela's.
     """
     def __init__(self, spec_file_name, scan_number, detector_data_path=None):
         super().__init__(
             spec_file_name, scan_number, detector_data_path=detector_data_path)
-        self.all_detector_data = None
+        # (file, frame) per scan step, per detector: see
+        # get_detector_data_pointers
+        self._detector_data_pointers = {}
 
     def get_detector_data_path(self):
         return os.path.join(self.scan_path, str(self.scan_number))
@@ -1939,161 +1941,104 @@ class SMBXRDScanParser(SMBMapscanScanParser, LinearScanParser):
                     f'order may not be scan order: {filenames}')
         return [os.path.join(folder, f) for f in filenames]
 
-    def get_detector_data(
-            self, detector_path='eig', scan_step_index=None,
-            placeholder_data=False, detector_prefix='', detector_format=None,
+    def get_detector_data_pointers(
+            self, detector_path, detector_prefix='', detector_format=None,
             reader_kwargs=None):
-        """Return a single frame of one detector's data.
+        """Return where each scan step's frame of one detector is
+        stored, as `(filename, frame index in that file)`, one per
+        scan step in scan order.
+
+        Only the number of frames in each file is read, no pixels.
+        The detector's files (:meth:`get_detector_data_files`), in
+        sorted order, must each hold one row of the scan: as many
+        files as rows, and as many frames per file as steps per row.
+        The result is cached per set of arguments.
 
         :param detector_path: Folder holding the detector's files,
-            relative to `<scan_path>/<scan_number>`, defaults to
-            `'eig'`.
-        :type detector_path: str, optional
-        :param scan_step_index: Index of the scan step to return the
-            frame from, defaults to all steps.
-        :type scan_step_index: int, optional
-        :param placeholder_data: If frames of data are missing and
-            placeholder_data is `False`, raise an error. Otherwise,
-            fill in the missing frames with the value of
-            `placeholder_data`. Defaults to `False`.
-        :type placeholder_data: object, optional
+            relative to `<scan_path>/<scan_number>`.
+        :type detector_path: str
         :param detector_prefix: Prefix of the detector's file names,
             defaults to `''` (every file in the folder).
         :type detector_prefix: str, optional
         :param detector_format: Format of the detector's files, see
-            :meth:`get_all_detector_data`, defaults to `None` (read
-            with `fabio`).
+            :func:`chess_scanparsers.chess_detectors.open_detector_file`,
+            defaults to `None` (read with `fabio`).
         :type detector_format: str, optional
         :param reader_kwargs: Keyword arguments for the file reader.
         :type reader_kwargs: dict, optional
-        :returns: Detector data from the scan step(s) requested, and
-            boolean array indicating whether placeholder data may be
-            present in the detector image(s).
-        :rtype: tuple[numpy.ndarray, numpy.ndarray]
+        :raises RuntimeError: If the number of files is not the number
+            of rows of the scan, or a file does not hold one row of
+            frames.
+        :rtype: list[tuple[str, int]]
         """
-        detector_data, placeholder_used = self.get_all_detector_data(
-            detector_path, placeholder_data=placeholder_data,
-            detector_prefix=detector_prefix, detector_format=detector_format,
-            reader_kwargs=reader_kwargs)
-        if scan_step_index is None:
-            return detector_data, placeholder_used
-        return (detector_data[scan_step_index],
-                placeholder_used[scan_step_index])
+        # Local modules
+        from .chess_detectors import open_detector_file
 
-    def get_all_detector_data(
-            self, detector_path='eig', placeholder_data=False,
-            detector_prefix='', detector_format=None, reader_kwargs=None):
-        """Return a 3D array of all images one detector collected
-        during the scan.
+        key = (detector_path, detector_prefix, detector_format,
+               repr(sorted((reader_kwargs or {}).items())))
+        if key in self._detector_data_pointers:
+            return self._detector_data_pointers[key]
+        filenames = self.get_detector_data_files(
+            detector_path, detector_prefix)
+        row_length = self.spec_scan_shape[0]
+        if len(self.spec_scan_shape) == 1:
+            num_rows = 1
+        else:
+            num_rows = self.spec_scan_shape[1]
+        if len(filenames) != num_rows:
+            raise RuntimeError(
+                f'{self.scan_title}: {len(filenames)} files for detector '
+                f'{detector_path}/{detector_prefix}*, expected one per row '
+                f'of the scan ({num_rows})')
+        pointers = []
+        for filename in filenames:
+            with open_detector_file(
+                    filename, detector_format, reader_kwargs) as frames:
+                num_frames = len(frames)
+            if num_frames != row_length:
+                raise RuntimeError(
+                    f'{self.scan_title}: {filename} holds {num_frames} '
+                    f'frames, expected one row of the scan ({row_length})')
+            pointers.extend((filename, frame) for frame in range(num_frames))
+        self._detector_data_pointers[key] = pointers
+        return pointers
+
+    def get_detector_data(
+            self, detector_path, scan_step_index, detector_prefix='',
+            detector_format=None, reader_kwargs=None):
+        """Return one detector's frame at one scan step, reading only
+        that frame.
 
         :param detector_path: Folder holding the detector's files,
-            relative to `<scan_path>/<scan_number>`, defaults to
-            `'eig'`.
-        :type detector_path: str, optional
-        :param placeholder_data: If frames of data are missing and
-            placeholder_data is `False`, raise an error. Otherwise,
-            fill in the missing frames with the value of
-            `placeholder_data`. Defaults to `False`.
-        :type placeholder_data: object, optional
+            relative to `<scan_path>/<scan_number>`.
+        :type detector_path: str
+        :param scan_step_index: Index of the scan step.
+        :type scan_step_index: int
         :param detector_prefix: Prefix of the detector's file names,
             defaults to `''` (every file in the folder).
         :type detector_prefix: str, optional
-        :param detector_format: Format of the detector's files:
-            `'eiger-stream-v1'` or `'eiger-stream-v2'` (read with
-            :mod:`chess_scanparsers.eiger_stream`), or `None` to read
-            them with `fabio`, defaults to `None`.
-        :type detector_format: str, optional
-        :param reader_kwargs: Keyword arguments for the file reader,
-            e.g. `{'threshold_setting': 'man_diff', 'multiplier':
-            1.9111}` for `'eiger-stream-v2'`.
-        :type reader_kwargs: dict, optional
-        :returns: The detector's images and corresponding boolean
-            array indicating whether placeholder data may be present
-            for those frames.
-        :rtype: tuple[numpy.ndarray, numpy.ndarray]
-        """
-        detector_data = []
-        placeholder_used = []
-        for detector_file in self.get_detector_data_files(
-                detector_path, detector_prefix):
-            data = self._read_detector_file(
-                detector_file, detector_format, reader_kwargs)
-            # Check for unexpected dataset shape based on length of a
-            # row for this scan. Update placeholder_used accordingly.
-            if data.shape[0] != self.spec_scan_shape[0]:
-                msg = (f'Incompatible data shape for {self}.\n'
-                       f'File: {detector_file}\n'
-                       f'Actual shape: {data.shape}\n'
-                       f'Expected first dimension: '
-                       f'{self.spec_scan_shape[0]}')
-                placeholder_used.extend([True] * self.spec_scan_shape[0])
-            else:
-                placeholder_used.extend([False] * self.spec_scan_shape[0])
-            # Append placeholder data if needed
-            if data.shape[0] < self.spec_scan_shape[0]:
-                if placeholder_data is False:
-                    raise RuntimeError(msg)
-                else:
-                    print(msg)
-                    data = np.append(
-                        data,
-                        np.full(
-                            (self.spec_scan_shape[0] - data.shape[0],
-                             *data.shape[1:]),
-                            placeholder_data,
-                            dtype=data.dtype),
-                        axis=0)
-            elif data.shape[0] > self.spec_scan_shape[0]:
-                raise RuntimeError(msg)
-            detector_data.append(data)
-        if len(self.spec_scan_shape) == 1:
-            assert len(detector_data) == 1
-            return np.asarray(detector_data[0]), np.asarray(placeholder_used)
-        assert len(detector_data) == self.spec_scan_shape[1]
-        return np.vstack(tuple(detector_data)), np.asarray(placeholder_used)
-
-    @staticmethod
-    def _read_detector_file(filename, detector_format=None, reader_kwargs=None):
-        """Return the frames in one detector file, along axis 0.
-
-        :param filename: Name of the detector file.
-        :type filename: str
-        :param detector_format: Format of the file, see
-            :meth:`get_all_detector_data`, defaults to `None` (read
-            with `fabio`).
+        :param detector_format: Format of the detector's files, see
+            :func:`chess_scanparsers.chess_detectors.open_detector_file`,
+            defaults to `None` (read with `fabio`).
         :type detector_format: str, optional
         :param reader_kwargs: Keyword arguments for the file reader.
         :type reader_kwargs: dict, optional
-        :raises ValueError: If the format is not supported.
+        :raises IndexError: If `scan_step_index` is out of range.
         :rtype: numpy.ndarray
         """
-        if detector_format is None:
-            # Third party modules
-            import fabio
-
-            with fabio.open(filename) as det_file:
-                return det_file.data
-
         # Local modules
-        from .eiger_stream import (
-            EigerStreamV1File,
-            EigerStreamV2File,
-        )
+        from .chess_detectors import open_detector_file
 
-        readers = {
-            'eiger-stream-v1': EigerStreamV1File,
-            'eiger-stream-v2': EigerStreamV2File,
-        }
-        if detector_format not in readers:
-            raise ValueError(
-                f'Unsupported detector_format "{detector_format}", allowed '
-                f'values are: None, {", ".join(readers)}')
-        with readers[detector_format](
-                filename, **(reader_kwargs or {})) as frames:
-            data = np.empty((len(frames), *frames.shape), dtype=frames.dtype)
-            for i in range(len(frames)):
-                data[i] = frames[i]
-        return data
+        pointers = self.get_detector_data_pointers(
+            detector_path, detector_prefix, detector_format, reader_kwargs)
+        if not 0 <= scan_step_index < len(pointers):
+            raise IndexError(
+                f'{self.scan_title}: scan step {scan_step_index} out of '
+                f'range, the scan has {len(pointers)} steps')
+        filename, frame = pointers[scan_step_index]
+        with open_detector_file(
+                filename, detector_format, reader_kwargs) as frames:
+            return frames[frame]
 
 
 class QM2ScanParser(LinearScanParser):
