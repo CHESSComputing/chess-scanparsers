@@ -1972,7 +1972,7 @@ class SMBXRDScanParser(SMBMapscanScanParser, LinearScanParser):
         :rtype: list[tuple[str, int]]
         """
         # Local modules
-        from .chess_detectors import open_detector_file
+        from chess_scanparsers.chess_detectors import open_detector_file
 
         key = (detector_path, detector_prefix, detector_format,
                repr(sorted((reader_kwargs or {}).items())))
@@ -2027,7 +2027,7 @@ class SMBXRDScanParser(SMBMapscanScanParser, LinearScanParser):
         :rtype: numpy.ndarray
         """
         # Local modules
-        from .chess_detectors import open_detector_file
+        from chess_scanparsers.chess_detectors import open_detector_file
 
         pointers = self.get_detector_data_pointers(
             detector_path, detector_prefix, detector_format, reader_kwargs)

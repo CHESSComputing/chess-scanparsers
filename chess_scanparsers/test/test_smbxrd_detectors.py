@@ -3,19 +3,19 @@
 stream readers, run against example detector files.
 
 The example files are read from the folder named by the environment
-variable `CHESS_SCANPARSERS_TEST_DATA`, by default
-`/nfs/chess/user/ad785/codes/examples/detector_data`, laid out as:
+variable `CHESS_SCANPARSERS_TEST_DATA`, laid out as:
 
     eig/v1/EIG16M_CdTe_002317.h5   Eiger stream v1, 10 frames
     eig/v2/EIG16M_CdTe_000282.h5   Eiger stream v2, 1 frame
     dex/ff1_000035.h5              Dexela panel 1, plain HDF5
     dex/ff2_000035.h5              Dexela panel 2, plain HDF5
 
-Tests that need the files are skipped when the folder is missing.
-`ScanParser` imports CHAP, so CHAP must be importable. Run from the
-repository root with:
+Tests that need the files are skipped when the variable is not set or
+the folder does not exist. `ScanParser` imports CHAP, so CHAP must be
+importable. Run from the repository root with:
 
-    python -m unittest discover -s tests -v
+    export CHESS_SCANPARSERS_TEST_DATA=<folder>
+    python -m pytest chess_scanparsers/test -v
 """
 
 # System modules
@@ -34,9 +34,7 @@ from chess_scanparsers.chess_detectors import (
 )
 from chess_scanparsers.scanparsers import SMBXRDScanParser
 
-DATA_DIR = os.environ.get(
-    'CHESS_SCANPARSERS_TEST_DATA',
-    '/nfs/chess/user/ad785/codes/examples/detector_data')
+DATA_DIR = os.environ.get('CHESS_SCANPARSERS_TEST_DATA', '')
 EIGER_V1 = os.path.join(DATA_DIR, 'eig', 'v1', 'EIG16M_CdTe_002317.h5')
 EIGER_V2 = os.path.join(DATA_DIR, 'eig', 'v2', 'EIG16M_CdTe_000282.h5')
 EIGER_SHAPE = (4362, 4148)
@@ -46,7 +44,8 @@ DEXELA_FF2 = os.path.join(DATA_DIR, 'dex', 'ff2_000035.h5')
 MULTIPLIER = 1.9111
 
 needs_data = unittest.skipUnless(
-    os.path.isdir(DATA_DIR), f'Example detector data not found: {DATA_DIR}')
+    os.path.isdir(DATA_DIR),
+    'Set CHESS_SCANPARSERS_TEST_DATA to the folder of example detector files')
 
 
 def make_parser(detector_data_path=DATA_DIR, spec_scan_shape=None):
@@ -110,10 +109,13 @@ class TestFileNameChecks(unittest.TestCase):
     def list_files(self, filenames):
         """Return the detector files of a faked folder holding
         `filenames`."""
+        # Build the parser before faking the file system: building it
+        # imports CHAP, whose imports use the real file system
+        parser = make_parser('/fake/scan')
         with mock.patch('os.path.isdir', return_value=True), \
                 mock.patch('os.path.isfile', return_value=True), \
                 mock.patch('os.listdir', return_value=filenames):
-            return make_parser('/fake/scan').get_detector_data_files('det')
+            return parser.get_detector_data_files('det')
 
     def test_padded_names_sorted(self):
         files = self.list_files(['a_010.tif', 'a_002.tif', 'a_001.tif'])
