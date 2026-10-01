@@ -1,12 +1,66 @@
 name: Deploy Sphinx documentation to Pages
 
 on:
+  workflow_dispatch:
+    inputs:
+      version_string:
+        description: 'Version of the package docs being deployed'
+        type: string
+        default: 'v0.0.0'
+        required: true
   push:
     tags:
-      - v*.*.*
+    - v*.*.*
 
 jobs:
-  pages:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Determine documentation version
+      id: version
+      run: |
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "version=${{ inputs.version_string }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Replace placeholder PACKAGE_VERSION string
+      run: |
+        sed -i "s/PACKAGE_VERSION/${{ steps.version.outputs.version }}/" setup.py
+        sed -i "s/PACKAGE_VERSION/${{ steps.version.outputs.version }}/" chess_scanparsers/__init__.py
+        sed -i "s/PACKAGE_VERSION/${{ steps.version.outputs.version }}/" docs/conf.py
+        sed -i "s/PACKAGE_VERSION/${{ steps.version.outputs.version }}/" docs/installation.md
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r docs/requirements.txt
+
+    - name: Build Sphinx documentation
+      run: |
+        make html
+      working-directory: docs
+
+    - name: Upload Pages artifact
+      uses: actions/upload-pages-artifact@v4
+      with:
+        path: docs/_build/html
+
+  deploy:
+    needs: build
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -14,14 +68,8 @@ jobs:
     permissions:
       pages: write
       id-token: write
+
     steps:
-    - uses: actions/checkout@v3
-    - name: Update docs configuration with version (tag) name
-      run: |
-        sed -i "s/PACKAGE_VERSION/${{ github.ref_name }}/" docs/conf.py
-        sed -i "s/PACKAGE_VERSION/${{ github.ref_name }}/" docs/installation.md
-    - name: Build and deploy docs
+    - name: Deploy to GitHub Pages
       id: deployment
-      uses: sphinx-notes/pages@v3
-      with:
-        checkout: false
+      uses: actions/deploy-pages@v4
