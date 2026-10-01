@@ -43,4 +43,10 @@ setuptools.setup(
         'chess-pyspec',
         'fabio',
     ],
+    extras_require={
+        'smbxrd': [
+            'dectris-compression',
+            'scipy',
+        ],
+    }
 )
