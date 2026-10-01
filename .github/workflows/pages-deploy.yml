@@ -24,14 +24,14 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Replace placeholder PACKAGE_VERSION string
-      if: ${{ github.event_name == "push" }}
+      if: ${{ github.event_name == 'push' }}
       run: |
         sed -i "s/PACKAGE_VERSION/${{ github.ref_name }}/" setup.py
         sed -i "s/PACKAGE_VERSION/${{ github.ref_name }}/" chess_scanparsers/__init__.py
         sed -i "s/PACKAGE_VERSION/${{ github.ref_name }}/" docs/conf.py
 
     - name: Replace placeholder PACKAGE_VERSION string
-      if: ${{ github.event_name == "workflow_dispatch" }}
+      if: ${{ github.event_name == 'workflow_dispatch' }}
       run: |
         sed -i "s/PACKAGE_VERSION/${{ inputs.version_string }}/" setup.py
         sed -i "s/PACKAGE_VERSION/${{ inputs.version_string }}/" chess_scanparsers/__init__.py
