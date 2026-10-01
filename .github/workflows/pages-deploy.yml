@@ -37,6 +37,7 @@ jobs:
         sed -i "s/PACKAGE_VERSION/${{ steps.version.outputs.version }}/" setup.py
         sed -i "s/PACKAGE_VERSION/${{ steps.version.outputs.version }}/" chess_scanparsers/__init__.py
         sed -i "s/PACKAGE_VERSION/${{ steps.version.outputs.version }}/" docs/conf.py
+        sed -i "s/PACKAGE_VERSION/${{ steps.version.outputs.version }}/" docs/installation.md
 
     - name: Set up Python
       uses: actions/setup-python@v5
