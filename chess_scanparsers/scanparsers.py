@@ -110,7 +110,7 @@ class ScanParser:
             self, spec_file_name, scan_number, detector_data_path=None):
         """Constructor method."""
         # Local modules
-        from CHAP.utils.general import is_int
+        from chess_scanparsers.utils.check_values import is_int
 
         if not isinstance(spec_file_name, str):
             raise ValueError(
@@ -1635,7 +1635,7 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
         :rtype: tuple[numpy.ndarray, numpy.ndarray]
         """
         # Local modules
-        from CHAP.utils.general import (
+        from chess_scanparsers.utils.check_values import (
             is_int_series,
             is_str_series,
         )
