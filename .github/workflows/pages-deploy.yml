@@ -23,19 +23,20 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Replace placeholder PACKAGE_VERSION string
-      if: ${{ github.event_name == 'push' }}
+    - name: Determine documentation version
+      id: version
       run: |
-        sed -i "s/PACKAGE_VERSION/${{ github.ref_name }}/" setup.py
-        sed -i "s/PACKAGE_VERSION/${{ github.ref_name }}/" chess_scanparsers/__init__.py
-        sed -i "s/PACKAGE_VERSION/${{ github.ref_name }}/" docs/conf.py
+        if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+          echo "version=${{ inputs.version_string }}" >> "$GITHUB_OUTPUT"
+        else
+          echo "version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+        fi
 
     - name: Replace placeholder PACKAGE_VERSION string
-      if: ${{ github.event_name == 'workflow_dispatch' }}
       run: |
-        sed -i "s/PACKAGE_VERSION/${{ inputs.version_string }}/" setup.py
-        sed -i "s/PACKAGE_VERSION/${{ inputs.version_string }}/" chess_scanparsers/__init__.py
-        sed -i "s/PACKAGE_VERSION/${{ inputs.version_string }}/" docs/conf.py
+        sed -i "s/PACKAGE_VERSION/${{ steps.version.outputs.version }}/" setup.py
+        sed -i "s/PACKAGE_VERSION/${{ steps.version.outputs.version }}/" chess_scanparsers/__init__.py
+        sed -i "s/PACKAGE_VERSION/${{ steps.version.outputs.version }}/" docs/conf.py
 
     - name: Set up Python
       uses: actions/setup-python@v5
