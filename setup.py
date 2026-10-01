@@ -28,8 +28,11 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type='text/markdown',
     url='https://github.com/CHESSComputing/chess-scanparsers',
-    packages=['chess_scanparsers'],
-    package_dir={'chess_scanparsers': 'chess_scanparsers'},
+    packages=['chess_scanparsers', 'chess_scanparsers.utils'],
+    package_dir={
+        'chess_scanparsers': 'chess_scanparsers',
+        'chess_scanparsers.utils': 'chess_scanparsers/utils',
+    },
     classifiers=[
         'Programming Language :: Python :: 3',
         'License :: OSI Approved :: MIT License',
