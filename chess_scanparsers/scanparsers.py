@@ -1451,42 +1451,7 @@ class MCAScanParser(ScanParser):
         raise NotImplementedError
 
 
-class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
-    """Concrete implementation of a class representing a scan taken
-    with the typical EDD setup at SMB or FAST.
-    """
-    detector_data_formats = ('spec', 'h5')
-
-    def __init__(
-            self, spec_file_name, scan_number, detector_data_format=None,
-            detector_data_path=None):
-        """Constructor for SMBMCAScnaParser.
-
-        :param spec_file: Path to scan's SPEC file.
-        :type spec_file: str
-        :param scan_number: SPEC scan number.
-        :type scan_number: int
-        :param detector_data_format: Format of the MCA data collected,
-            defaults to None.
-        :type detector_data_format: Literal["spec", "h5"], optional
-        :param detector_data_path: Directory in which to look for
-            detector data files.
-        """
-        super().__init__(
-            spec_file_name, scan_number, detector_data_path=detector_data_path)
-
-        self.detector_data_format = detector_data_format
-        if detector_data_format is None:
-            self.init_detector_data_format()
-        else:
-            if detector_data_format.lower() in self.detector_data_formats:
-                self.detector_data_format = detector_data_format.lower()
-            else:
-                raise ValueError(
-                    'Unrecognized value for detector_data_format: '
-                    f'{detector_data_format}. Allowed values are: '
-                    ', '.join(self.detector_data_formats))
-
+class SMBMapscanScanParser(SMBScanParser):
     def get_spec_scan_motor_vals(self, relative=True):
         if not relative:
             # The scanned motor's recorded position in the spec.log
@@ -1528,6 +1493,43 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
             return (self.spec_scan.data[:,0],)
         raise RuntimeError(f'{self.scan_title}: cannot determine scan motors '
                            f'for scans of type {self.spec_macro}')
+
+
+class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBMapscanScanParser):
+    """Concrete implementation of a class representing a scan taken
+    with the typical EDD setup at SMB or FAST.
+    """
+    detector_data_formats = ('spec', 'h5')
+
+    def __init__(
+            self, spec_file_name, scan_number, detector_data_format=None,
+            detector_data_path=None):
+        """Constructor for SMBMCAScnaParser.
+
+        :param spec_file: Path to scan's SPEC file.
+        :type spec_file: str
+        :param scan_number: SPEC scan number.
+        :type scan_number: int
+        :param detector_data_format: Format of the MCA data collected,
+            defaults to None.
+        :type detector_data_format: Literal["spec", "h5"], optional
+        :param detector_data_path: Directory in which to look for
+            detector data files.
+        """
+        super().__init__(
+            spec_file_name, scan_number, detector_data_path=detector_data_path)
+
+        self.detector_data_format = detector_data_format
+        if detector_data_format is None:
+            self.init_detector_data_format()
+        else:
+            if detector_data_format.lower() in self.detector_data_formats:
+                self.detector_data_format = detector_data_format.lower()
+            else:
+                raise ValueError(
+                    'Unrecognized value for detector_data_format: '
+                    f'{detector_data_format}. Allowed values are: '
+                    ', '.join(self.detector_data_formats))
 
     def init_detector_data_format(self):
         """Determine and set a value for the instance variable
@@ -1859,6 +1861,184 @@ class SMBMCAScanParser(MCAScanParser, LinearScanParser, SMBScanParser):
             return detector_data, placeholder_used
         return (detector_data[scan_step_index],
                 placeholder_used[scan_step_index])
+
+
+class SMBXRDScanParser(SMBMapscanScanParser, LinearScanParser):
+    """Parser for SMB mapscans used for XRD experiments with one or
+    more area detectors (e.g. the Eiger).
+
+    Each detector's files live in a folder below the scan's
+    `<scan_path>/<scan_number>` directory, passed to the detector
+    methods as `detector_path`. A detector's files are the `.h5` or
+    TIFF files in that folder whose names start with
+    `detector_prefix`; each must hold one row of the scan's frames.
+    `detector_format` picks how they are read: with `fabio`, with
+    :mod:`chess_scanparsers.chess_detectors` for Eiger stream files, or
+    with `h5py` for plain HDF5 files such as the Dexela's.
+    """
+    def __init__(self, spec_file_name, scan_number, detector_data_path=None):
+        super().__init__(
+            spec_file_name, scan_number, detector_data_path=detector_data_path)
+        # (file, frame) per scan step, per detector: see
+        # get_detector_data_pointers
+        self._detector_data_pointers = {}
+
+    def get_detector_data_path(self):
+        return os.path.join(self.scan_path, str(self.scan_number))
+
+    def get_detector_data_files(self, detector_path='eig', detector_prefix=''):
+        """Return the filenames (full absolute paths) to the files
+        holding one detector's images for this scan, in scan order.
+
+        The detector's files are the `.h5` or TIFF files in its folder
+        whose names start with `detector_prefix`, so one folder may
+        hold several detectors' files. They are returned in sorted
+        order, which is scan order only if the frame numbers in their
+        names are zero-padded to a common width.
+
+        :param detector_path: Folder holding the detector's files,
+            relative to `<scan_path>/<scan_number>`, defaults to
+            `'eig'`.
+        :type detector_path: str, optional
+        :param detector_prefix: Prefix of the detector's file names,
+            matched literally (e.g. `'ff1_'`), defaults to `''` (every
+            file in the folder).
+        :type detector_prefix: str, optional
+        :raises OSError: If the folder does not exist, holds no
+            matching files, or holds both matching `.h5` and TIFF
+            files.
+        :raises RuntimeError: If there are several matching files and
+            the frame numbers in their names (the last run of digits)
+            are not zero-padded to a common width.
+        :rtype: list[str]
+        """
+        folder = os.path.join(self.detector_data_path, detector_path)
+        if not os.path.isdir(folder):
+            raise OSError(f'Unable to find detector folder {folder}')
+        filenames = [
+            f for f in os.listdir(folder)
+            if f.startswith(detector_prefix)
+            and os.path.isfile(os.path.join(folder, f))]
+        h5_files = sorted(f for f in filenames if f.endswith('.h5'))
+        tiff_files = sorted(
+            f for f in filenames if f.endswith(('.tif', '.tiff')))
+        if h5_files and tiff_files:
+            raise OSError(
+                f'Both .h5 and TIFF files match {detector_prefix}* in '
+                f'{folder}')
+        filenames = h5_files or tiff_files
+        if not filenames:
+            raise OSError(
+                f'No .h5 or TIFF files match {detector_prefix}* in {folder}')
+        if len(filenames) > 1:
+            numbers = [re.findall(r'\d+', os.path.splitext(f)[0])
+                       for f in filenames]
+            widths = {len(n[-1]) if n else 0 for n in numbers}
+            if len(widths) > 1 or 0 in widths:
+                raise RuntimeError(
+                    f'Frame numbers of the detector files in {folder} are '
+                    'not zero-padded to a common width, so their sorted '
+                    f'order may not be scan order: {filenames}')
+        return [os.path.join(folder, f) for f in filenames]
+
+    def get_detector_data_pointers(
+            self, detector_path, detector_prefix='', detector_format=None,
+            reader_kwargs=None):
+        """Return where each scan step's frame of one detector is
+        stored, as `(filename, frame index in that file)`, one per
+        scan step in scan order.
+
+        Only the number of frames in each file is read, no pixels.
+        The detector's files (:meth:`get_detector_data_files`), in
+        sorted order, must each hold one row of the scan: as many
+        files as rows, and as many frames per file as steps per row.
+        The result is cached per set of arguments.
+
+        :param detector_path: Folder holding the detector's files,
+            relative to `<scan_path>/<scan_number>`.
+        :type detector_path: str
+        :param detector_prefix: Prefix of the detector's file names,
+            defaults to `''` (every file in the folder).
+        :type detector_prefix: str, optional
+        :param detector_format: Format of the detector's files, see
+            :func:`chess_scanparsers.chess_detectors.open_detector_file`,
+            defaults to `None` (read with `fabio`).
+        :type detector_format: str, optional
+        :param reader_kwargs: Keyword arguments for the file reader.
+        :type reader_kwargs: dict, optional
+        :raises RuntimeError: If the number of files is not the number
+            of rows of the scan, or a file does not hold one row of
+            frames.
+        :rtype: list[tuple[str, int]]
+        """
+        # Local modules
+        from chess_scanparsers.chess_detectors import open_detector_file
+
+        key = (detector_path, detector_prefix, detector_format,
+               repr(sorted((reader_kwargs or {}).items())))
+        if key in self._detector_data_pointers:
+            return self._detector_data_pointers[key]
+        filenames = self.get_detector_data_files(
+            detector_path, detector_prefix)
+        row_length = self.spec_scan_shape[0]
+        if len(self.spec_scan_shape) == 1:
+            num_rows = 1
+        else:
+            num_rows = self.spec_scan_shape[1]
+        if len(filenames) != num_rows:
+            raise RuntimeError(
+                f'{self.scan_title}: {len(filenames)} files for detector '
+                f'{detector_path}/{detector_prefix}*, expected one per row '
+                f'of the scan ({num_rows})')
+        pointers = []
+        for filename in filenames:
+            with open_detector_file(
+                    filename, detector_format, reader_kwargs) as frames:
+                num_frames = len(frames)
+            if num_frames != row_length:
+                raise RuntimeError(
+                    f'{self.scan_title}: {filename} holds {num_frames} '
+                    f'frames, expected one row of the scan ({row_length})')
+            pointers.extend((filename, frame) for frame in range(num_frames))
+        self._detector_data_pointers[key] = pointers
+        return pointers
+
+    def get_detector_data(
+            self, detector_path, scan_step_index, detector_prefix='',
+            detector_format=None, reader_kwargs=None):
+        """Return one detector's frame at one scan step, reading only
+        that frame.
+
+        :param detector_path: Folder holding the detector's files,
+            relative to `<scan_path>/<scan_number>`.
+        :type detector_path: str
+        :param scan_step_index: Index of the scan step.
+        :type scan_step_index: int
+        :param detector_prefix: Prefix of the detector's file names,
+            defaults to `''` (every file in the folder).
+        :type detector_prefix: str, optional
+        :param detector_format: Format of the detector's files, see
+            :func:`chess_scanparsers.chess_detectors.open_detector_file`,
+            defaults to `None` (read with `fabio`).
+        :type detector_format: str, optional
+        :param reader_kwargs: Keyword arguments for the file reader.
+        :type reader_kwargs: dict, optional
+        :raises IndexError: If `scan_step_index` is out of range.
+        :rtype: numpy.ndarray
+        """
+        # Local modules
+        from chess_scanparsers.chess_detectors import open_detector_file
+
+        pointers = self.get_detector_data_pointers(
+            detector_path, detector_prefix, detector_format, reader_kwargs)
+        if not 0 <= scan_step_index < len(pointers):
+            raise IndexError(
+                f'{self.scan_title}: scan step {scan_step_index} out of '
+                f'range, the scan has {len(pointers)} steps')
+        filename, frame = pointers[scan_step_index]
+        with open_detector_file(
+                filename, detector_format, reader_kwargs) as frames:
+            return frames[frame]
 
 
 class QM2ScanParser(LinearScanParser):
