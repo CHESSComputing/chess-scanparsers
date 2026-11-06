@@ -1033,7 +1033,7 @@ class FMBXRFScanParser(LinearScanParser, FMBScanParser):
         from h5py import File
 
         row_detector_data = np.full(
-            (self.spec_scan_shape[-1], self.n_detectors, self.detector_shape),
+            (self.spec_scan_shape[0], self.n_detectors, self.detector_shape),
             np.nan
         )
         try:
